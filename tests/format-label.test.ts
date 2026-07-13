@@ -12,7 +12,7 @@ test("formats an index path as its folder hierarchy", () => {
 test("formats a non-index note as its basename", () => {
   assert.equal(
     formatGraphLabel("wiki/projects/beautiful_graph/beautiful_graph_plan.md", true),
-    "Beautiful Graph plan",
+    "beautiful graph plan",
   );
 });
 
