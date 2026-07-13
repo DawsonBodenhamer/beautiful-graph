@@ -1,0 +1,29 @@
+{
+  "name": "beautiful-graph",
+  "version": "1.0.0",
+  "description": "GPU-rendered, directory-sensitive knowledge graph for Obsidian.",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "test": "node --experimental-strip-types --test tests/*.test.ts"
+  },
+  "keywords": [
+    "obsidian",
+    "graph"
+  ],
+  "author": "Dawson Bodenhamer",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.15.17",
+    "esbuild": "0.25.5",
+    "obsidian": "latest",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@types/d3-force": "^3.0.10",
+    "d3-force": "^3.0.0",
+    "pixi.js": "^8.19.0"
+  }
+}

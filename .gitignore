@@ -1,0 +1,12 @@
+node_modules/
+main.js
+*.map
+bin/
+build/
+dist/
+.gradle/
+coverage/
+.cache/
+.video_frames/
+.video_review_*/
+*.log

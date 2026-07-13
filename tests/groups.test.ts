@@ -1,0 +1,14 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { defaultGroupIcon, displayDirectory, effectiveGroup, GROUP_PALETTES, inferGroups, nodeAllowed, normalizeIcon } from "../src/groups.ts";
+import type { GraphGroup } from "../src/types.ts";
+const groups:GraphGroup[]=[{id:"raw",root:"raw",color:"#f00",icon:"🧺",visible:true,origin:"auto",order:0},{id:"clients",root:"raw/business/clients",color:"#0f0",icon:"📁",visible:true,origin:"manual",order:1}];
+test("deepest folder group wins",()=>assert.equal(effectiveGroup("raw/business/clients/a.md",groups)?.id,"clients"));
+test("hidden parent suppresses visible child",()=>assert.equal(nodeAllowed("raw/business/clients/a.md",[{...groups[0]!,visible:false},groups[1]!],true),false));
+test("other fallback visibility is respected",()=>assert.equal(nodeAllowed("misc/a.md",groups,false),false));
+test("directory formatting toggles are independent",()=>{assert.equal(displayDirectory("freelance_business",true,true),"Freelance Business");assert.equal(displayDirectory("freelance_business",false,true),"Freelance_Business");assert.equal(displayDirectory("freelance_business",false,false),"freelance_business")});
+test("group icon accepts only one grapheme",()=>{assert.equal(normalizeIcon("🧠🔥"),"🧠");assert.equal(normalizeIcon("👩‍💻🔥"),"👩‍💻")});
+test("automatic inference creates only root directory groups",()=>{const nodes=["raw/a.md","raw/deep/b.md","wiki/c.md","index.md"].map((path,i)=>({id:path,path,folder:path.includes("/")?path.slice(0,path.lastIndexOf("/")):"",label:"n",category:"Raw",color:"#fff",icon:"",degree:i,baseRadius:1,radius:1,description:"",visible:true,hub:false,alwaysLabel:false,rootIndexStyled:false,x:0,y:0}));assert.deepEqual(inferGroups(nodes).map(g=>g.root),["raw","wiki"])});
+test("named palettes keep distinct root-group swatches",()=>{for(const [name,colors] of Object.entries(GROUP_PALETTES)){assert.ok(colors.length>=4,name);assert.equal(new Set(colors.slice(0,4)).size,4,name)}});
+test("revision 8 palettes preserve their intended first four slots",()=>{assert.deepEqual(GROUP_PALETTES["High Discrimination"]?.slice(0,4),["#E31A1C","#33A02C","#1F78B4","#FF7F00"]);assert.deepEqual(GROUP_PALETTES["Gruvbox Dark"]?.slice(0,4),["#FB4934","#B8BB26","#83A598","#FE8019"])});
+test("known root icons use locked defaults",()=>{assert.equal(defaultGroupIcon("raw"),"🧺");assert.equal(defaultGroupIcon("wiki"),"📜")});
