@@ -31,6 +31,8 @@ export interface BeautifulGraphData { version: number; settings: BeautifulGraphS
 export interface GraphNode extends GraphPoint {
   id: string; path: string; label: string; folder: string; category: string; color: string; icon: string;
   degree: number; readonly baseRadius: number; radius: number; description: string; visible: boolean; hub: boolean; alwaysLabel:boolean; rootIndexStyled:boolean;
+  family:string;
 }
-export interface GraphEdge { source: string; target: string }
+export type GraphRelationship="parent"|"sibling"|"cross";
+export interface GraphEdge { source:string; target:string; forward:boolean; reverse:boolean; relationship:GraphRelationship }
 export interface GraphModel { nodes: GraphNode[]; edges: GraphEdge[] }

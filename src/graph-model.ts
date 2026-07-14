@@ -2,6 +2,7 @@ import type { App, TFile } from "obsidian";
 import type { BeautifulGraphSettings, GraphEdge, GraphModel, GraphNode, GraphPoint } from "./types";
 import { effectiveGroup, nodeAllowed, OTHER_COLOR } from "./groups";
 import { applyDerivedNodePresentation } from "./node-presentation";
+import { deriveGraphRelationships } from "./graph-relationships";
 
 const CATEGORY = {
   Wiki: ["#44D7B6", "📜"], Raw: ["#FF8A4C", "🧺"], Development: ["#9B87F5", "🛠️"],
@@ -32,19 +33,19 @@ export function buildGraphModel(app: App, settings: BeautifulGraphSettings, posi
   ) : 0;
   const useSavedLayout = savedSpan >= 50 && savedSpan <= 50_000;
   const savedCenter = savedPoints.length ? { x: savedPoints.reduce((s,p)=>s+p.x,0)/savedPoints.length, y: savedPoints.reduce((s,p)=>s+p.y,0)/savedPoints.length } : {x:0,y:0};
-  const savedScale = savedSpan > 900 ? 900 / savedSpan : 1;
+  // Preserve the user's settled scale exactly. Camera fitting handles large valid layouts.
+  const savedScale = 1;
   const paths = new Set(files.map((file) => file.path));
-  const edges: GraphEdge[] = [];
+  const directedLinks:{source:string;target:string}[]=[];
   const degree = new Map<string, number>();
   for (const source of files) {
     const links = app.metadataCache.resolvedLinks[source.path] ?? {};
     for (const target of Object.keys(links)) {
-      if (!paths.has(target) || source.path >= target) continue;
-      edges.push({ source: source.path, target });
-      degree.set(source.path, (degree.get(source.path) ?? 0) + 1);
-      degree.set(target, (degree.get(target) ?? 0) + 1);
+      if(paths.has(target))directedLinks.push({source:source.path,target});
     }
   }
+  const relationships=deriveGraphRelationships(paths,directedLinks),edges:GraphEdge[]=relationships.edges;
+  for(const edge of edges){degree.set(edge.source,(degree.get(edge.source)??0)+1);degree.set(edge.target,(degree.get(edge.target)??0)+1)}
   const nodes: GraphNode[] = files.map((file, index) => {
     const category = classify(file.path);
     const [color, icon] = CATEGORY[category];
@@ -60,6 +61,7 @@ export function buildGraphModel(app: App, settings: BeautifulGraphSettings, posi
     const radius = Math.min(24, 3.5 + Math.log2(d + 1) * 2.2) * (hub ? 1.5 : category === "Other" ? 0.55 : 1);
     return {
       id: file.path, path: file.path, label: title(file, settings.replaceUnderscores,settings.capitalizeDirectories), folder: file.parent?.path ?? "",
+      family:relationships.familyByNode.get(file.path)??`folder:${file.parent?.path??""}`,
       category, color: group?.color??settings.other.color, icon:String(frontmatter?.graph_icon ?? group?.icon ?? settings.other.icon ?? icon), degree: d,
       baseRadius:radius, radius, description: String(frontmatter?.description ?? ""), visible: nodeAllowed(file.path,settings.groups,settings.other.visible), hub,
       alwaysLabel:false,rootIndexStyled:false,

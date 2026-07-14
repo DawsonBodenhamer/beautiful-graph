@@ -4,6 +4,10 @@ export interface ClientPoint { x:number; y:number }
 export interface HostRect { left:number; top:number }
 export interface DragState { pointerId:number; start:ClientPoint; offset:ClientPoint; moved:boolean }
 
+export function acceptsHoverWhileDragging(draggedId:string|undefined):boolean{return draggedId===undefined}
+export function dragReleaseAction(moved:boolean,cancelled:boolean):"pin"|"clear"{return moved||cancelled?"clear":"pin"}
+export function suppressesPostDragTap(now:number,until:number):boolean{return now<until}
+
 export function clientToWorld(point:ClientPoint,rect:HostRect,camera:CameraTransform):ClientPoint {
   return{x:(point.x-rect.left-camera.x)/camera.scale,y:(point.y-rect.top-camera.y)/camera.scale};
 }

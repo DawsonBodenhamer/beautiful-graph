@@ -1,4 +1,16 @@
-import type { PanelState } from "./types";
+import type { BeautifulGraphSettings, PanelState } from "./types";
+
+export const NEW_DEFAULT_PRESET="Make this the new defaults";
+
+export function migrateNamedDefaults(settings:BeautifulGraphSettings,fromVersion:number):{forces:boolean;display:boolean} {
+  const result={forces:false,display:false};
+  if(fromVersion>=13)return result;
+  const forces=settings.forcePresets?.[NEW_DEFAULT_PRESET];
+  if(forces){settings.forces=structuredClone(forces);delete settings.forcePresets[NEW_DEFAULT_PRESET];result.forces=true}
+  const display=settings.displayPresets?.[NEW_DEFAULT_PRESET];
+  if(display){settings.display=structuredClone(display);delete settings.displayPresets[NEW_DEFAULT_PRESET];result.display=true}
+  return result;
+}
 
 export function migrateRevision15Glow(display:{glow:number},fromVersion:number):boolean {
   if(fromVersion>=12||Math.abs(display.glow-.59056)>.000001)return false;

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { migrateAdaptivePanelDefaults, migrateResponsivePanels, migrateRevision10Panels, migrateRevision15Glow, resolveLegacyPanelGeometry } from "../src/settings-migration.ts";
+import { migrateAdaptivePanelDefaults, migrateNamedDefaults, migrateResponsivePanels, migrateRevision10Panels, migrateRevision15Glow, resolveLegacyPanelGeometry } from "../src/settings-migration.ts";
+import type { BeautifulGraphSettings } from "../src/types.ts";
 
 test("known obsolete panel signatures migrate",()=>{
   const panels={groups:{visible:true,collapsed:false,width:245,height:638},display:{visible:true,collapsed:false,width:247,height:474,x:900,y:48}};
@@ -50,4 +51,16 @@ test("revision 15 glow migration changes only the verified live multiplier",()=>
   assert.equal(migrateRevision15Glow(custom,11),false);
   assert.equal(custom.glow,.4);
   assert.equal(migrateRevision15Glow({glow:.59056},12),false);
+});
+
+test("named force and display defaults promote independently and idempotently",()=>{
+  const name="Make this the new defaults",settings={forces:{center:9},display:{glow:9},forcePresets:{[name]:{center:.5,repel:.3}},displayPresets:{[name]:{glow:.7},keep:{glow:.2}}} as unknown as BeautifulGraphSettings;
+  assert.deepEqual(migrateNamedDefaults(settings,12),{forces:true,display:true});
+  assert.deepEqual(settings.forces,{center:.5,repel:.3});assert.deepEqual(settings.display,{glow:.7});assert.equal(settings.forcePresets[name],undefined);assert.deepEqual(settings.displayPresets.keep,{glow:.2});
+  assert.deepEqual(migrateNamedDefaults(settings,13),{forces:false,display:false});
+});
+
+test("missing named preset does not block promotion of the other domain",()=>{
+  const name="Make this the new defaults",settings={forces:{center:1},display:{glow:1},forcePresets:{},displayPresets:{[name]:{glow:.6}}} as unknown as BeautifulGraphSettings;
+  assert.deepEqual(migrateNamedDefaults(settings,12),{forces:false,display:true});assert.deepEqual(settings.forces,{center:1});assert.deepEqual(settings.display,{glow:.6});
 });

@@ -4,23 +4,27 @@ import { BeautifulGraphSettingTab } from "./settings";
 import type { BeautifulGraphData, BeautifulGraphSettings } from "./types";
 import { DEFAULT_DISPLAY, DEFAULT_FORCES } from "./defaults";
 import { defaultGroupIcon, GROUP_PALETTE, OTHER_COLOR, ROOT_INDEX_COLOR } from "./groups";
-import { migrateAdaptivePanelDefaults, migrateResponsivePanels, migrateRevision10Panels, migrateRevision15Glow } from "./settings-migration";
+import { migrateAdaptivePanelDefaults, migrateNamedDefaults, migrateResponsivePanels, migrateRevision10Panels, migrateRevision15Glow } from "./settings-migration";
 import { SettingsHistory } from "./settings-history";
+import { SnapshotWriteQueue } from "./snapshot-write-queue";
 
 const DEFAULTS: BeautifulGraphSettings = { replaceUnderscores:true,capitalizeDirectories:true,maxLabelDirectories:3,forces:{...DEFAULT_FORCES},display:{...DEFAULT_DISPLAY},categoryVisibility:{},groups:[],other:{visible:true,color:OTHER_COLOR,icon:"📂"},rootIndex:{enabled:true,color:ROOT_INDEX_COLOR,icon:"🌱",includeLinked:false},otherVisible:true,groupPalette:"Beautiful Default",groupPresets:{},panels:{groups:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13},forces:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13},display:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13}},forcePresets:{},displayPresets:{},historyLimit:50 };
 
 export default class BeautifulGraphPlugin extends Plugin {
   settings: BeautifulGraphSettings = structuredClone(DEFAULTS);
-  data: BeautifulGraphData = {version:12,settings:this.settings,positions:{}};
+  data: BeautifulGraphData = {version:14,settings:this.settings,positions:{}};
+  needsLayoutConvergence=false;
   private lastGraph?: BeautifulGraphView;
   private graphViews=new Set<BeautifulGraphView>();
   private settingsHistory=new SettingsHistory<BeautifulGraphSettings>(50);
   private fileExplorerBridgeInstalled = false;
   private diagnosticWrites:Promise<void>=Promise.resolve();
+  private dataWrites=new SnapshotWriteQueue<BeautifulGraphData>();
   readonly diagnosticPath=".obsidian/plugins/beautiful-graph/diagnostics.log";
   async onload():Promise<void>{
     await this.resetDiagnostics();
     const old=await this.loadData() as Partial<BeautifulGraphData>&{settings?:Partial<BeautifulGraphSettings>};
+    this.needsLayoutConvergence=(old?.version??0)<14;
     const oldDisplay=old?.settings?.display as Partial<BeautifulGraphSettings["display"]>&{hideSearchSatellites?:boolean}|undefined;
     this.settings={...structuredClone(DEFAULTS),...old?.settings,forces:{...DEFAULTS.forces,...old?.settings?.forces},display:{...DEFAULTS.display,...oldDisplay,showLinkedInSearch:oldDisplay?.showLinkedInSearch??(oldDisplay?.hideSearchSatellites===undefined?false:!oldDisplay.hideSearchSatellites)},panels:{...DEFAULTS.panels,...old?.settings?.panels}};
     const legacy=old?.settings as (Partial<BeautifulGraphSettings>&{otherVisible?:boolean;groupPalette?:string})|undefined;
@@ -38,8 +42,10 @@ export default class BeautifulGraphPlugin extends Plugin {
     migrateAdaptivePanelDefaults(this.settings.panels,old?.version??0);
     if((old?.version??0)<11)this.settings.display.recenterOnFocus=false;
     migrateRevision15Glow(this.settings.display,old?.version??0);
+    const namedDefaultMigration=migrateNamedDefaults(this.settings,old?.version??0);
     this.settingsHistory.setLimit(this.settings.historyLimit);
-    this.data={version:12,settings:this.settings,positions:(old?.version??0)>=3?(old?.positions??{}):{}};
+    this.data={version:14,settings:this.settings,positions:(old?.version??0)>=3?(old?.positions??{}):{}};
+    if((old?.version??0)!==14||namedDefaultMigration.forces||namedDefaultMigration.display)await this.persistData();
     this.registerView(BEAUTIFUL_GRAPH_VIEW,(leaf)=>new BeautifulGraphView(leaf,this));
     this.addCommand({id:"open-beautiful-graph",name:"Open Beautiful Graph",callback:()=>void this.openGraph()});
     this.addRibbonIcon("orbit","Open Beautiful Graph",()=>void this.openGraph());
@@ -50,7 +56,7 @@ export default class BeautifulGraphPlugin extends Plugin {
   }
   async onunload():Promise<void>{await this.persistData();this.app.workspace.detachLeavesOfType(BEAUTIFUL_GRAPH_VIEW)}
   async openGraph():Promise<void>{const leaf=this.app.workspace.getLeaf("tab");await leaf.setViewState({type:BEAUTIFUL_GRAPH_VIEW,active:true});this.app.workspace.revealLeaf(leaf)}
-  async persistData():Promise<void>{this.settingsHistory.commit(this.settings);this.updateHistoryButtons();this.data.settings=this.settings;await this.saveData(this.data)}
+  async persistData():Promise<void>{this.settingsHistory.commit(this.settings);this.updateHistoryButtons();this.data.settings=this.settings;await this.dataWrites.enqueue(this.data,snapshot=>this.saveData(snapshot))}
   async clearPositions():Promise<void>{this.data.positions={};await this.persistData();new Notice("Beautiful Graph positions cleared.")}
   registerGraph(view:BeautifulGraphView):void{this.lastGraph=view;this.graphViews.add(view);view.updateHistoryButtons(this.settingsHistory.canUndo,this.settingsHistory.canRedo)}
   unregisterGraph(view:BeautifulGraphView):void{this.graphViews.delete(view);if(this.lastGraph===view)this.lastGraph=[...this.graphViews].at(-1)}

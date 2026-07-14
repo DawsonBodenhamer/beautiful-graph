@@ -6,9 +6,9 @@ import type { GraphEdge, GraphNode } from "../src/types.ts";
 const node=(path:string,baseRadius:number):GraphNode=>({
   id:path,path,label:path,folder:path.includes("/")?path.slice(0,path.lastIndexOf("/")):"",category:"Wiki",
   color:"#000000",icon:"",degree:1,baseRadius,radius:baseRadius,description:"",visible:true,hub:false,
-  alwaysLabel:false,rootIndexStyled:false,x:0,y:0,
+  alwaysLabel:false,rootIndexStyled:false,family:`folder:${path.includes("/")?path.slice(0,path.lastIndexOf("/")):""}`,x:0,y:0,
 });
-const edges:GraphEdge[]=[{source:"index.md",target:"wiki/a.md"}];
+const edges:GraphEdge[]=[{source:"index.md",target:"wiki/a.md",forward:true,reverse:false,relationship:"parent"}];
 const settings={
   groups:[{id:"wiki",root:"wiki",color:"#123456",icon:"📜",visible:true,origin:"auto" as const,order:0}],
   other:{visible:true,color:"#222222",icon:"📂"},
