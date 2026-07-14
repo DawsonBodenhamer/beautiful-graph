@@ -15,7 +15,7 @@ export const DEFAULT_DISPLAY: GraphDisplay = {
   textFade: 21,
   nodeSize: 0.79,
   linkThickness: 0.79,
-  glow: 0.16,
+  glow: 0.679144,
   glowSize: 1.3,
   showSiblingLinks: true,
   showLinkedInSearch: false,

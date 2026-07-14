@@ -3,12 +3,12 @@ export function createPhysicsWorker(): Worker {
     let nodes=[], edges=[], opts={center:.25,repel:.5,link:.5,distance:100,curvature:0,stretchiness:0,siblingLinkForce:true}, timer, alpha=1, quiet=0, nodeScale=1, routeSides=new Map(), adjacency=new Map(), searchRoles=new Map(), stepNo=0;
     const byId=()=>new Map(nodes.map(n=>[n.id,n]));
     onmessage=e=>{const m=e.data;
-      if(m.type==='init'){nodes=m.nodes.map(n=>({...n,vx:0,vy:0,fx:null,fy:null}));edges=m.edges;opts=m.opts;nodeScale=m.nodeScale||1;routeSides=new Map();adjacency=new Map();for(const e of edges){if(!adjacency.has(e.source))adjacency.set(e.source,[]);if(!adjacency.has(e.target))adjacency.set(e.target,[]);adjacency.get(e.source).push(e.target);adjacency.get(e.target).push(e.source)}stepNo=0;run(1,true)}
+      if(m.type==='init'){nodes=m.nodes.map(n=>({...n,vx:0,vy:0,fx:null,fy:null}));edges=m.edges;opts=m.opts;nodeScale=m.nodeScale||1;routeSides=new Map();adjacency=new Map();for(const e of edges){if(!adjacency.has(e.source))adjacency.set(e.source,[]);if(!adjacency.has(e.target))adjacency.set(e.target,[]);adjacency.get(e.source).push(e.target);adjacency.get(e.target).push(e.source)}stepNo=0;const heat=m.heat??1;if(heat>0)run(heat,m.thorough!==false);else postMessage({type:'settled',nodes:nodes.map(n=>({id:n.id,x:n.x,y:n.y}))})}
       else if(m.type==='forces'){opts=m.opts;run(1,!!m.thorough)}
       else if(m.type==='groups'){const groups=new Map(m.groups);for(const n of nodes)n.group=groups.get(n.id)??n.folder;run(.8)}
       else if(m.type==='visibility'){const ids=new Set(m.ids);for(const n of nodes)if(ids.has(n.id))n.visible=m.visible;run(.65)}
       else if(m.type==='searchRoles'){searchRoles=new Map(m.roles);run(.75)}
-      else if(m.type==='nodeScale'){nodeScale=m.value||1;run(.7)}
+      else if(m.type==='nodeScale'){nodeScale=m.value||1;if(m.freeze){clearInterval(timer);for(const n of nodes){n.vx=0;n.vy=0}}else if(m.reheat)run(.7)}
       else if(m.type==='drag'){const n=byId().get(m.id);if(n){n.fx=m.x;n.fy=m.y;n.x=m.x;n.y=m.y;n.vx=0;n.vy=0;run(.45)}}
       else if(m.type==='release'){const n=byId().get(m.id);if(n){n.fx=null;n.fy=null;run(.35)}}
     };

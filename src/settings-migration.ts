@@ -1,5 +1,11 @@
 import type { PanelState } from "./types";
 
+export function migrateRevision15Glow(display:{glow:number},fromVersion:number):boolean {
+  if(fromVersion>=12||Math.abs(display.glow-.59056)>.000001)return false;
+  display.glow=.679144;
+  return true;
+}
+
 export function migrateRevision10Panels(panels:Record<string,PanelState>,fromVersion:number):void {
   if(fromVersion>=8)return;
   const groups=panels.groups;

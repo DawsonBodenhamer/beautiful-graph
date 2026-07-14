@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { migrateAdaptivePanelDefaults, migrateResponsivePanels, migrateRevision10Panels, resolveLegacyPanelGeometry } from "../src/settings-migration.ts";
+import { migrateAdaptivePanelDefaults, migrateResponsivePanels, migrateRevision10Panels, migrateRevision15Glow, resolveLegacyPanelGeometry } from "../src/settings-migration.ts";
 
 test("known obsolete panel signatures migrate",()=>{
   const panels={groups:{visible:true,collapsed:false,width:245,height:638},display:{visible:true,collapsed:false,width:247,height:474,x:900,y:48}};
@@ -41,4 +41,13 @@ test("revision 9 custom free panel geometry remains explicit",()=>{
   const panels={groups:{visible:true,collapsed:false,pinned:false,width:.16,height:.55}};
   migrateAdaptivePanelDefaults(panels,9);
   assert.deepEqual(panels.groups,{visible:true,collapsed:false,pinned:false,width:.16,height:.55,autoHeight:false});
+});
+
+test("revision 15 glow migration changes only the verified live multiplier",()=>{
+  const live={glow:.5905600000000002},custom={glow:.4};
+  assert.equal(migrateRevision15Glow(live,11),true);
+  assert.equal(live.glow,.679144);
+  assert.equal(migrateRevision15Glow(custom,11),false);
+  assert.equal(custom.glow,.4);
+  assert.equal(migrateRevision15Glow({glow:.59056},12),false);
 });
