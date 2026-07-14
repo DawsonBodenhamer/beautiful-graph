@@ -10,7 +10,7 @@ const DEFAULTS: BeautifulGraphSettings = { replaceUnderscores:true,capitalizeDir
 
 export default class BeautifulGraphPlugin extends Plugin {
   settings: BeautifulGraphSettings = structuredClone(DEFAULTS);
-  data: BeautifulGraphData = {version:10,settings:this.settings,positions:{}};
+  data: BeautifulGraphData = {version:11,settings:this.settings,positions:{}};
   private lastGraph?: BeautifulGraphView;
   private fileExplorerBridgeInstalled = false;
   private diagnosticWrites:Promise<void>=Promise.resolve();
@@ -33,7 +33,8 @@ export default class BeautifulGraphPlugin extends Plugin {
     migrateRevision10Panels(this.settings.panels,old?.version??0);
     migrateResponsivePanels(this.settings.panels,old?.version??0);
     migrateAdaptivePanelDefaults(this.settings.panels,old?.version??0);
-    this.data={version:10,settings:this.settings,positions:(old?.version??0)>=3?(old?.positions??{}):{}};
+    if((old?.version??0)<11)this.settings.display.recenterOnFocus=false;
+    this.data={version:11,settings:this.settings,positions:(old?.version??0)>=3?(old?.positions??{}):{}};
     this.registerView(BEAUTIFUL_GRAPH_VIEW,(leaf)=>new BeautifulGraphView(leaf,this));
     this.addCommand({id:"open-beautiful-graph",name:"Open Beautiful Graph",callback:()=>void this.openGraph()});
     this.addRibbonIcon("orbit","Open Beautiful Graph",()=>void this.openGraph());

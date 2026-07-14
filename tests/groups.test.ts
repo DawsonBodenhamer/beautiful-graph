@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { defaultGroupIcon, displayDirectory, effectiveGroup, GROUP_PALETTES, inferGroups, nodeAllowed, normalizeIcon } from "../src/groups.ts";
+import { analyzeAutoGroups, defaultGroupIcon, displayDirectory, effectiveGroup, GROUP_PALETTES, inferGroups, nodeAllowed, normalizeIcon } from "../src/groups.ts";
 import type { GraphGroup } from "../src/types.ts";
 const groups:GraphGroup[]=[{id:"raw",root:"raw",color:"#f00",icon:"🧺",visible:true,origin:"auto",order:0},{id:"clients",root:"raw/business/clients",color:"#0f0",icon:"📁",visible:true,origin:"manual",order:1}];
 test("deepest folder group wins",()=>assert.equal(effectiveGroup("raw/business/clients/a.md",groups)?.id,"clients"));
@@ -12,3 +12,4 @@ test("automatic inference creates only root directory groups",()=>{const nodes=[
 test("named palettes keep distinct root-group swatches",()=>{for(const [name,colors] of Object.entries(GROUP_PALETTES)){assert.ok(colors.length>=4,name);assert.equal(new Set(colors.slice(0,4)).size,4,name)}});
 test("revision 8 palettes preserve their intended first four slots",()=>{assert.deepEqual(GROUP_PALETTES["High Discrimination"]?.slice(0,4),["#E31A1C","#33A02C","#1F78B4","#FF7F00"]);assert.deepEqual(GROUP_PALETTES["Gruvbox Dark"]?.slice(0,4),["#FB4934","#B8BB26","#83A598","#FE8019"])});
 test("known root icons use locked defaults",()=>{assert.equal(defaultGroupIcon("raw"),"🧺");assert.equal(defaultGroupIcon("wiki"),"📜")});
+test("automatic analysis is deterministic and preserves manual groups",()=>{const paths=[...Array(10)].map((_,i)=>`alpha/a${i}.md`).concat([...Array(10)].map((_,i)=>`beta/b${i}.md`)),nodes=paths.map(path=>({id:path,path,folder:path.split("/")[0]!,label:path,category:"Other",color:"#fff",icon:"",degree:0,baseRadius:1,radius:1,description:"",visible:true,hub:false,alwaysLabel:false,rootIndexStyled:false,x:0,y:0})),manual:GraphGroup={id:"manual-beta",root:"beta",color:"#123456",icon:"📁",visible:true,origin:"manual",order:0},first=analyzeAutoGroups(nodes,[],[manual]),second=analyzeAutoGroups(nodes,[],first.groups);assert.deepEqual(first.groups.map(g=>[g.origin,g.root]),[["auto","alpha"],["manual","beta"]]);assert.deepEqual(second.groups,first.groups)});
