@@ -4,9 +4,9 @@ import { BeautifulGraphSettingTab } from "./settings";
 import type { BeautifulGraphData, BeautifulGraphSettings } from "./types";
 import { DEFAULT_DISPLAY, DEFAULT_FORCES } from "./defaults";
 import { defaultGroupIcon, GROUP_PALETTE, OTHER_COLOR, ROOT_INDEX_COLOR } from "./groups";
-import { migrateRevision10Panels } from "./settings-migration";
+import { migrateResponsivePanels, migrateRevision10Panels } from "./settings-migration";
 
-const DEFAULTS: BeautifulGraphSettings = { replaceUnderscores:true,capitalizeDirectories:true,maxLabelDirectories:3,forces:{...DEFAULT_FORCES},display:{...DEFAULT_DISPLAY},categoryVisibility:{},groups:[],other:{visible:true,color:OTHER_COLOR,icon:"📂"},rootIndex:{enabled:true,color:ROOT_INDEX_COLOR,icon:"🌱",includeLinked:false},otherVisible:true,groupPalette:"Beautiful Default",groupPresets:{},panels:{groups:{visible:true,collapsed:false,width:245,height:520},forces:{visible:true,collapsed:false,width:247,height:378},display:{visible:true,collapsed:false,width:247,height:474}},forcePresets:{},displayPresets:{},historyLimit:50 };
+const DEFAULTS: BeautifulGraphSettings = { replaceUnderscores:true,capitalizeDirectories:true,maxLabelDirectories:3,forces:{...DEFAULT_FORCES},display:{...DEFAULT_DISPLAY},categoryVisibility:{},groups:[],other:{visible:true,color:OTHER_COLOR,icon:"📂"},rootIndex:{enabled:true,color:ROOT_INDEX_COLOR,icon:"🌱",includeLinked:false},otherVisible:true,groupPalette:"Beautiful Default",groupPresets:{},panels:{groups:{visible:true,collapsed:false,width:.18,height:.48},forces:{visible:true,collapsed:false,width:.18,height:.30},display:{visible:true,collapsed:false,width:.18,height:.40}},forcePresets:{},displayPresets:{},historyLimit:50 };
 
 export default class BeautifulGraphPlugin extends Plugin {
   settings: BeautifulGraphSettings = structuredClone(DEFAULTS);
@@ -25,13 +25,14 @@ export default class BeautifulGraphPlugin extends Plugin {
     this.settings.rootIndex={...DEFAULTS.rootIndex,...legacy?.rootIndex};
     if(!legacy?.rootIndex?.icon)this.settings.rootIndex.icon="🌱";
     if(!this.settings.other.icon)this.settings.other.icon="📂";
-    for(const [id,state] of Object.entries(this.settings.panels)){if(state.collapsed&&id==="forces"){state.collapsed=false;delete state.height}if(!state.collapsed&&state.height!==undefined&&state.height<=44)delete state.height}
+    for(const [id,state] of Object.entries(this.settings.panels)){if(state.collapsed&&id==="forces")state.collapsed=false;if(!state.collapsed&&state.height!==undefined&&state.height>1&&state.height<=44)delete state.height}
     if(this.settings.groupPalette==="Beautiful Balanced")this.settings.groupPalette="Beautiful Default";
     this.settings.groups=(this.settings.groups??[]).map((g,i)=>({id:g.id??`${g.origin??"manual"}:${g.root}`,root:g.root,color:g.color??GROUP_PALETTE[i%GROUP_PALETTE.length]!,icon:g.icon||defaultGroupIcon(g.root),visible:g.visible!==false,origin:g.origin??"manual",order:i}));
     if((old?.version??0)<7&&this.settings.groupPalette==="Beautiful Default"){const colors:Record<string,string>={dev:"#20B2CF",outputs:"#1FDB2C",raw:"#4E606E",wiki:"#D37203"};for(const group of this.settings.groups)group.color=colors[group.root.toLowerCase()]??group.color}
     // Versions 1-2 could persist layouts produced by unstable or grid-bounded physics.
     migrateRevision10Panels(this.settings.panels,old?.version??0);
-    this.data={version:8,settings:this.settings,positions:(old?.version??0)>=3?(old?.positions??{}):{}};
+    migrateResponsivePanels(this.settings.panels,old?.version??0);
+    this.data={version:9,settings:this.settings,positions:(old?.version??0)>=3?(old?.positions??{}):{}};
     this.registerView(BEAUTIFUL_GRAPH_VIEW,(leaf)=>new BeautifulGraphView(leaf,this));
     this.addCommand({id:"open-beautiful-graph",name:"Open Beautiful Graph",callback:()=>void this.openGraph()});
     this.addRibbonIcon("orbit","Open Beautiful Graph",()=>void this.openGraph());

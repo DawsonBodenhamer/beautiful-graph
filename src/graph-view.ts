@@ -10,6 +10,7 @@ import { formatTooltipPath } from "./format-label";
 import { buildLensContours } from "./lens-contour";
 import { defaultGroupIcon, displayDirectory, effectiveGroup, GROUP_PALETTES, inferGroups, nodeAllowed, normalizeIcon } from "./groups";
 import { activeNodeIds, applyDerivedNodePresentation, sameNodeIds } from "./node-presentation";
+import { resolveLegacyPanelGeometry } from "./settings-migration";
 
 export const BEAUTIFUL_GRAPH_VIEW = "beautiful-graph";
 type NodeView = { node: GraphNode; body: Graphics; surface: Sprite; glow: Sprite; icon?: Text; iconRes?: number; label?: Text; labelBg?: Graphics; leader?:Graphics; styleKey?: string };
@@ -81,6 +82,7 @@ export class BeautifulGraphView extends ItemView {
   private visibilityAnimation=0;
   private lensDiagnosticSignature="";
   private panelZ=20;
+  private panelResizeObserver?:ResizeObserver;
 
   constructor(leaf: WorkspaceLeaf, private plugin: BeautifulGraphPlugin) { super(leaf); }
   getViewType(): string { return BEAUTIFUL_GRAPH_VIEW; }
@@ -119,13 +121,14 @@ export class BeautifulGraphView extends ItemView {
     this.updateBreadcrumb();
     const toolbar=this.contentEl.querySelector<HTMLElement>(".beautiful-graph-toolbar");if(toolbar){const undo=toolbar.createEl("button",{text:"Undo",attr:{"aria-label":"Undo graph settings (Ctrl+Z)"}});undo.onclick=()=>this.undoSettings();toolbar.insertBefore(undo,toolbar.lastElementChild)}
     this.createPanels();
+    this.panelResizeObserver=new ResizeObserver(()=>this.layoutPanels());this.panelResizeObserver.observe(this.contentEl);
     this.createGuiDock();
     this.bindNavigation(canvasHost);
     this.rebuild(false);
     syncTicker();
   }
 
-  async onClose(): Promise<void> { if(this.modelRefreshTimer)window.clearTimeout(this.modelRefreshTimer);if(this.initialFitTimer)window.clearTimeout(this.initialFitTimer);if(this.searchTimer)window.clearTimeout(this.searchTimer);for(const timer of this.folderTapTimers.values())window.clearTimeout(timer);this.cancelHoverIntent();this.savePositions(); this.worker?.terminate(); this.pixi?.destroy(true);for(const texture of this.nodeTextures.values())texture.destroy(true);this.nodeTextures.clear(); }
+  async onClose(): Promise<void> { this.panelResizeObserver?.disconnect();if(this.modelRefreshTimer)window.clearTimeout(this.modelRefreshTimer);if(this.initialFitTimer)window.clearTimeout(this.initialFitTimer);if(this.searchTimer)window.clearTimeout(this.searchTimer);for(const timer of this.folderTapTimers.values())window.clearTimeout(timer);this.cancelHoverIntent();this.savePositions(); this.worker?.terminate(); this.pixi?.destroy(true);for(const texture of this.nodeTextures.values())texture.destroy(true);this.nodeTextures.clear(); }
 
   rebuild(rebuildModel = true): void {
     this.cancelHoverIntent();this.focusAnimation++;this.focusProgress=0;this.focusTarget=0;this.focusPinned=false;this.hovered=undefined;this.hideTooltip();this.scene.filters=[];
@@ -347,16 +350,19 @@ export class BeautifulGraphView extends ItemView {
   })}
   private createGuiDock():void{this.contentEl.querySelector(".beautiful-gui-dock")?.remove();const dock=this.contentEl.createDiv({cls:"beautiful-gui-dock"}),reset=dock.createEl("button",{text:"Reset GUI"}),collapse=dock.createEl("button",{cls:"beautiful-gui-collapse"});reset.onclick=()=>this.resetGui();collapse.onclick=()=>{const states=Object.values(this.plugin.settings.panels),collapseTo=!states.every(state=>state.collapsed);for(const state of states)state.collapsed=collapseTo;void this.plugin.persistData();this.createPanels();this.updateGuiDockLabel()};this.updateGuiDockLabel()}
   private updateGuiDockLabel():void{const button=this.contentEl.querySelector<HTMLButtonElement>(".beautiful-gui-collapse"),states=Object.values(this.plugin.settings.panels),all=states.length>0&&states.every(state=>state.collapsed);if(button)button.textContent=all?"Expand all":"Collapse all"}
-  private resetGui():void{const marginX=Math.round(this.contentEl.clientWidth*.05),marginY=Math.round(this.contentEl.clientHeight*.05),sizes={groups:{width:245,height:520},forces:{width:247,height:378},display:{width:247,height:474}} as const;for(const [id,size] of Object.entries(sizes)){const state=this.plugin.settings.panels[id]??={visible:true,collapsed:false};state.collapsed=false;state.width=size.width;state.height=Math.min(size.height,this.contentEl.clientHeight-marginY*2);state.x=id==="display"?this.contentEl.clientWidth-marginX-size.width:marginX;state.y=id==="forces"||id==="display"?this.contentEl.clientHeight-marginY-state.height:marginY;this.plugin.settings.panels[id]=state}void this.plugin.persistData();this.createPanels();this.updateGuiDockLabel()}
+  private resetGui():void{const defaults={groups:{x:.03,y:.03,width:.18,height:.48},forces:{x:.03,y:.67,width:.18,height:.30},display:{x:.79,y:.57,width:.18,height:.40}} as const;for(const [id,geometry] of Object.entries(defaults)){const state=this.plugin.settings.panels[id]??={visible:true,collapsed:false};Object.assign(state,geometry,{collapsed:false});delete state.legacyPixels;this.plugin.settings.panels[id]=state}void this.plugin.persistData();this.createPanels();this.updateGuiDockLabel()}
+  private panelDefaults(id:string):{x:number;y:number;width:number;height:number}{return id==="groups"?{x:.03,y:.03,width:.18,height:.48}:id==="forces"?{x:.03,y:.67,width:.18,height:.30}:{x:.79,y:.57,width:.18,height:.40}}
+  private applyPanelGeometry(panel:HTMLElement,id:string):void{const state=this.plugin.settings.panels[id],w=this.contentEl.clientWidth,h=this.contentEl.clientHeight;if(!state||w<=0||h<=0)return;const migrated=resolveLegacyPanelGeometry(state,w,h),fallback=this.panelDefaults(id),minW=Math.min(190,w*.94),minH=state.collapsed?42:Math.min(id==="groups"?360:id==="forces"?250:320,h*.94),width=Math.max(minW,Math.min(w*.94,(state.width??fallback.width)*w)),height=state.collapsed?42:Math.max(minH,Math.min(h*.94,(state.height??fallback.height)*h)),x=Math.max(w*.03,Math.min(w-width-w*.03,(state.x??fallback.x)*w)),y=Math.max(h*.03,Math.min(h-height-h*.03,(state.y??fallback.y)*h));Object.assign(panel.style,{left:`${x}px`,top:`${y}px`,right:"auto",bottom:"auto",width:`${width}px`,height:`${height}px`});if(migrated)void this.plugin.persistData()}
+  private layoutPanels():void{for(const panel of Array.from(this.contentEl.querySelectorAll<HTMLElement>(".beautiful-graph-panel[data-panel-id]")))this.applyPanelGeometry(panel,panel.dataset.panelId!)}
   private createPanel(id:string,title:string,fill:(body:HTMLElement)=>void):void {
-    const state=this.plugin.settings.panels[id]??={visible:true,collapsed:false};if(!state.collapsed&&state.height!==undefined&&state.height<=44)delete state.height;
-    const panel=this.contentEl.createDiv({cls:`beautiful-graph-panel beautiful-panel-${id}`});if(state.x!==undefined){panel.style.left=`${state.x}px`;panel.style.top=`${state.y??12}px`;panel.style.right="auto";panel.style.bottom="auto"}if(state.width)panel.style.width=`${state.width}px`;if(state.height)panel.style.height=`${state.height}px`;panel.style.zIndex=String(state.z??10);panel.toggleClass("is-collapsed",state.collapsed);
+    const state=this.plugin.settings.panels[id]??={visible:true,collapsed:false};
+    const panel=this.contentEl.createDiv({cls:`beautiful-graph-panel beautiful-panel-${id}`,attr:{"data-panel-id":id}});panel.style.zIndex=String(state.z??10);panel.toggleClass("is-collapsed",state.collapsed);this.applyPanelGeometry(panel,id);
     const head=panel.createDiv({cls:"beautiful-panel-head"});head.createSpan({text:title});const collapse=head.createEl("button",{cls:"beautiful-panel-collapse",text:state.collapsed?"+":"−"}),body=panel.createDiv({cls:"beautiful-panel-body"});
-    collapse.onclick=e=>{e.stopPropagation();state.collapsed=!state.collapsed;if(!state.collapsed){delete state.height;panel.style.removeProperty("height")}panel.toggleClass("is-collapsed",state.collapsed);collapse.textContent=state.collapsed?"+":"−";void this.plugin.persistData();this.updateGuiDockLabel()};
-    let moving=false,pointerId:number|undefined,sx=0,sy=0,ox=0,oy=0;const finish=()=>{if(!moving)return;moving=false;if(pointerId!==undefined&&head.hasPointerCapture(pointerId))head.releasePointerCapture(pointerId);pointerId=undefined;state.x=panel.offsetLeft;state.y=panel.offsetTop;void this.plugin.persistData()};
+    collapse.onclick=e=>{e.stopPropagation();state.collapsed=!state.collapsed;panel.toggleClass("is-collapsed",state.collapsed);collapse.textContent=state.collapsed?"+":"−";this.applyPanelGeometry(panel,id);void this.plugin.persistData();this.updateGuiDockLabel()};
+    let moving=false,pointerId:number|undefined,sx=0,sy=0,ox=0,oy=0;const finish=()=>{if(!moving)return;moving=false;if(pointerId!==undefined&&head.hasPointerCapture(pointerId))head.releasePointerCapture(pointerId);pointerId=undefined;const w=this.contentEl.clientWidth,h=this.contentEl.clientHeight;if(w>0&&h>0){state.x=panel.offsetLeft/w;state.y=panel.offsetTop/h}void this.plugin.persistData()};
     head.onpointerdown=e=>{if(e.target===collapse)return;moving=true;pointerId=e.pointerId;sx=e.clientX;sy=e.clientY;const rect=panel.getBoundingClientRect(),host=this.contentEl.getBoundingClientRect();ox=rect.left-host.left;oy=rect.top-host.top;head.setPointerCapture(e.pointerId);state.z=++this.panelZ;panel.style.zIndex=String(state.z)};
     head.onpointermove=e=>{if(!moving)return;const x=Math.max(0,Math.min(this.contentEl.clientWidth-panel.offsetWidth,ox+e.clientX-sx)),y=Math.max(0,Math.min(this.contentEl.clientHeight-panel.offsetHeight,oy+e.clientY-sy));panel.style.left=`${x}px`;panel.style.top=`${y}px`;panel.style.right="auto";panel.style.bottom="auto"};head.onpointerup=finish;head.onpointercancel=finish;head.onlostpointercapture=finish;window.addEventListener("blur",finish,{once:true});
-    panel.onpointerup=()=>{if(!state.collapsed){state.width=panel.offsetWidth;state.height=panel.offsetHeight}void this.plugin.persistData()};fill(body);
+    panel.onpointerup=()=>{const w=this.contentEl.clientWidth,h=this.contentEl.clientHeight;if(!state.collapsed&&w>0&&h>0){state.width=panel.offsetWidth/w;state.height=panel.offsetHeight/h}void this.plugin.persistData()};fill(body);
   }
   private slider(body:HTMLElement,label:string,value:number,min:number,max:number,step:number,onChange:(n:number)=>void):HTMLInputElement {const row=body.createEl("label");row.createSpan({text:label});const input=row.createEl("input",{type:"range"});input.min=String(min);input.max=String(max);input.step=String(step);input.value=String(value);input.addEventListener("pointerdown",()=>this.pushHistory());input.oninput=()=>onChange(Number(input.value));return input;}
   private mappedSlider(body:HTMLElement,label:string,value:number,min:number,mid:number,max:number,onChange:(n:number)=>void):HTMLInputElement {const input=this.slider(body,label,50,0,100,.1,p=>onChange(p<=50?min+(mid-min)*(p/50):mid+(max-mid)*((p-50)/50)));this.setMappedValue(input,value,min,mid,max);return input}
