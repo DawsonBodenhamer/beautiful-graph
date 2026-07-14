@@ -1,0 +1,16 @@
+
+# Managed Graphify exclusions
+*.md
+*.html
+*.htm
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.svg
+*.mp3
+*.wav
+*.mp4
+*.mov

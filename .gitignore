@@ -10,3 +10,8 @@ coverage/
 .video_frames/
 .video_review_*/
 *.log
+
+# Local code-intelligence indexes
+.codegraph/
+graphify-out/
+graph.json
