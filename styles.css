@@ -12,6 +12,7 @@
 .beautiful-graph-panel{min-width:190px;min-height:42px;max-width:94%;max-height:94%;overflow:hidden;resize:both}
 .beautiful-panel-head{position:relative;display:flex;justify-content:space-between;align-items:center;cursor:move;user-select:none}
 .beautiful-panel-collapse{width:20px;height:20px;padding:0;border:0;background:transparent;color:#8998a5}
+.beautiful-panel-actions{display:flex;align-items:center;gap:3px}.beautiful-panel-pin{width:20px;height:20px;padding:3px;border:0;background:transparent;color:#596873}.beautiful-panel-pin.is-pinned{color:#44d7b6}.beautiful-panel-pin svg{width:14px;height:14px}
 .beautiful-panel-body{height:calc(100% - 41px);overflow:hidden}
 .beautiful-graph-panel.is-collapsed{height:42px!important;min-height:42px;resize:none}.beautiful-graph-panel.is-collapsed .beautiful-panel-body{display:none}
 .beautiful-panel-groups{width:280px;height:620px;max-height:82%}.beautiful-panel-groups .beautiful-panel-body{overflow:hidden}

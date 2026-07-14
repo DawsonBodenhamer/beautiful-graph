@@ -6,7 +6,7 @@ import { DEFAULT_DISPLAY, DEFAULT_FORCES } from "./defaults";
 import { defaultGroupIcon, GROUP_PALETTE, OTHER_COLOR, ROOT_INDEX_COLOR } from "./groups";
 import { migrateResponsivePanels, migrateRevision10Panels } from "./settings-migration";
 
-const DEFAULTS: BeautifulGraphSettings = { replaceUnderscores:true,capitalizeDirectories:true,maxLabelDirectories:3,forces:{...DEFAULT_FORCES},display:{...DEFAULT_DISPLAY},categoryVisibility:{},groups:[],other:{visible:true,color:OTHER_COLOR,icon:"📂"},rootIndex:{enabled:true,color:ROOT_INDEX_COLOR,icon:"🌱",includeLinked:false},otherVisible:true,groupPalette:"Beautiful Default",groupPresets:{},panels:{groups:{visible:true,collapsed:false,width:.18,height:.48},forces:{visible:true,collapsed:false,width:.18,height:.30},display:{visible:true,collapsed:false,width:.18,height:.40}},forcePresets:{},displayPresets:{},historyLimit:50 };
+const DEFAULTS: BeautifulGraphSettings = { replaceUnderscores:true,capitalizeDirectories:true,maxLabelDirectories:3,forces:{...DEFAULT_FORCES},display:{...DEFAULT_DISPLAY},categoryVisibility:{},groups:[],other:{visible:true,color:OTHER_COLOR,icon:"📂"},rootIndex:{enabled:true,color:ROOT_INDEX_COLOR,icon:"🌱",includeLinked:false},otherVisible:true,groupPalette:"Beautiful Default",groupPresets:{},panels:{groups:{visible:true,collapsed:false,pinned:true,width:.18,height:.48},forces:{visible:true,collapsed:false,pinned:true,width:.18,height:.30},display:{visible:true,collapsed:false,pinned:true,width:.18,height:.40}},forcePresets:{},displayPresets:{},historyLimit:50 };
 
 export default class BeautifulGraphPlugin extends Plugin {
   settings: BeautifulGraphSettings = structuredClone(DEFAULTS);
