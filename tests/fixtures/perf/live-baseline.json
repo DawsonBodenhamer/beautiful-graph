@@ -1,0 +1,129 @@
+{
+  "capturedAt": "2026-07-14T16:41:56.860Z",
+  "eventCount": 20,
+  "p95Ms": 1063.3,
+  "maxMs": 2000,
+  "timedOut": 1,
+  "samples": [
+    {
+      "kind": "create",
+      "latencyMs": 459,
+      "timedOut": false,
+      "actionMs": 466.3
+    },
+    {
+      "kind": "create",
+      "latencyMs": 429.2,
+      "timedOut": false,
+      "actionMs": 443
+    },
+    {
+      "kind": "create",
+      "latencyMs": 432.9,
+      "timedOut": false,
+      "actionMs": 443.2
+    },
+    {
+      "kind": "create",
+      "latencyMs": 437.5,
+      "timedOut": false,
+      "actionMs": 479
+    },
+    {
+      "kind": "content-modify",
+      "latencyMs": 1063.3,
+      "timedOut": false,
+      "actionMs": 1069.4
+    },
+    {
+      "kind": "content-modify",
+      "latencyMs": 557.3,
+      "timedOut": false,
+      "actionMs": 600.9
+    },
+    {
+      "kind": "content-modify",
+      "latencyMs": 450.3,
+      "timedOut": false,
+      "actionMs": 458.1
+    },
+    {
+      "kind": "content-modify",
+      "latencyMs": 500,
+      "timedOut": false,
+      "actionMs": 504.8
+    },
+    {
+      "kind": "link-modify",
+      "latencyMs": 481.7,
+      "timedOut": false,
+      "actionMs": 486.3
+    },
+    {
+      "kind": "link-modify",
+      "latencyMs": 528.1,
+      "timedOut": false,
+      "actionMs": 536.9
+    },
+    {
+      "kind": "link-modify",
+      "latencyMs": 500.2,
+      "timedOut": false,
+      "actionMs": 505.2
+    },
+    {
+      "kind": "link-modify",
+      "latencyMs": 2000,
+      "timedOut": true,
+      "actionMs": 2015.8
+    },
+    {
+      "kind": "rename",
+      "latencyMs": 580.7,
+      "timedOut": false,
+      "actionMs": 702
+    },
+    {
+      "kind": "rename",
+      "latencyMs": 418.9,
+      "timedOut": false,
+      "actionMs": 578
+    },
+    {
+      "kind": "rename",
+      "latencyMs": 522.6,
+      "timedOut": false,
+      "actionMs": 659.6
+    },
+    {
+      "kind": "rename",
+      "latencyMs": 422.3,
+      "timedOut": false,
+      "actionMs": 545.3
+    },
+    {
+      "kind": "delete",
+      "latencyMs": 414.8,
+      "timedOut": false,
+      "actionMs": 423.2
+    },
+    {
+      "kind": "delete",
+      "latencyMs": 761.8,
+      "timedOut": false,
+      "actionMs": 772
+    },
+    {
+      "kind": "delete",
+      "latencyMs": 589,
+      "timedOut": false,
+      "actionMs": 600
+    },
+    {
+      "kind": "delete",
+      "latencyMs": 441.7,
+      "timedOut": false,
+      "actionMs": 454.1
+    }
+  ]
+}

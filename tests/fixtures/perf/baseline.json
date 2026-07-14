@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "capturedAt": "2026-07-14T16:32:37.591Z",
+  "protocol": {
+    "runs": 3,
+    "runMs": 20000,
+    "warmupMs": 5000,
+    "minSamples": 300,
+    "p95": "sorted[ceil(0.95 * count) - 1]"
+  },
+  "results": [
+    {
+      "run": 1,
+      "workload": "startup",
+      "sampleCount": 300,
+      "p95Ms": 6.5,
+      "maxMs": 11.2,
+      "longTaskCount": 2,
+      "longTaskMaxMs": 200
+    },
+    {
+      "run": 2,
+      "workload": "startup",
+      "sampleCount": 300,
+      "p95Ms": 7.2,
+      "maxMs": 10.4,
+      "longTaskCount": 1,
+      "longTaskMaxMs": 571
+    },
+    {
+      "run": 3,
+      "workload": "startup",
+      "sampleCount": 300,
+      "p95Ms": 6.9,
+      "maxMs": 9.2,
+      "longTaskCount": 0,
+      "longTaskMaxMs": 0
+    },
+    {
+      "run": 1,
+      "workload": "motion",
+      "sampleCount": 300,
+      "p95Ms": 7.3,
+      "maxMs": 9.5,
+      "longTaskCount": 0,
+      "longTaskMaxMs": 0
+    },
+    {
+      "run": 2,
+      "workload": "motion",
+      "sampleCount": 300,
+      "p95Ms": 7,
+      "maxMs": 9.8,
+      "longTaskCount": 0,
+      "longTaskMaxMs": 0
+    },
+    {
+      "run": 3,
+      "workload": "motion",
+      "sampleCount": 300,
+      "p95Ms": 7.3,
+      "maxMs": 10.3,
+      "longTaskCount": 0,
+      "longTaskMaxMs": 0
+    },
+    {
+      "run": 1,
+      "workload": "camera",
+      "sampleCount": 3403,
+      "p95Ms": 5.4,
+      "maxMs": 8.4,
+      "longTaskCount": 0,
+      "longTaskMaxMs": 0
+    },
+    {
+      "run": 2,
+      "workload": "camera",
+      "sampleCount": 3557,
+      "p95Ms": 4.4,
+      "maxMs": 7.9,
+      "longTaskCount": 0,
+      "longTaskMaxMs": 0
+    },
+    {
+      "run": 3,
+      "workload": "camera",
+      "sampleCount": 3552,
+      "p95Ms": 4.6,
+      "maxMs": 7.6,
+      "longTaskCount": 0,
+      "longTaskMaxMs": 0
+    },
+    {
+      "run": 1,
+      "workload": "gui",
+      "sampleCount": 3538,
+      "p95Ms": 5,
+      "maxMs": 9,
+      "longTaskCount": 0,
+      "longTaskMaxMs": 0
+    },
+    {
+      "run": 2,
+      "workload": "gui",
+      "sampleCount": 3375,
+      "p95Ms": 5.6,
+      "maxMs": 9,
+      "longTaskCount": 0,
+      "longTaskMaxMs": 0
+    },
+    {
+      "run": 3,
+      "workload": "gui",
+      "sampleCount": 3468,
+      "p95Ms": 5.3,
+      "maxMs": 8.8,
+      "longTaskCount": 0,
+      "longTaskMaxMs": 0
+    }
+  ]
+}
