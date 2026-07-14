@@ -4,13 +4,13 @@ import { BeautifulGraphSettingTab } from "./settings";
 import type { BeautifulGraphData, BeautifulGraphSettings } from "./types";
 import { DEFAULT_DISPLAY, DEFAULT_FORCES } from "./defaults";
 import { defaultGroupIcon, GROUP_PALETTE, OTHER_COLOR, ROOT_INDEX_COLOR } from "./groups";
-import { migrateResponsivePanels, migrateRevision10Panels } from "./settings-migration";
+import { migrateAdaptivePanelDefaults, migrateResponsivePanels, migrateRevision10Panels } from "./settings-migration";
 
-const DEFAULTS: BeautifulGraphSettings = { replaceUnderscores:true,capitalizeDirectories:true,maxLabelDirectories:3,forces:{...DEFAULT_FORCES},display:{...DEFAULT_DISPLAY},categoryVisibility:{},groups:[],other:{visible:true,color:OTHER_COLOR,icon:"📂"},rootIndex:{enabled:true,color:ROOT_INDEX_COLOR,icon:"🌱",includeLinked:false},otherVisible:true,groupPalette:"Beautiful Default",groupPresets:{},panels:{groups:{visible:true,collapsed:false,pinned:true,width:.18,height:.48},forces:{visible:true,collapsed:false,pinned:true,width:.18,height:.30},display:{visible:true,collapsed:false,pinned:true,width:.18,height:.40}},forcePresets:{},displayPresets:{},historyLimit:50 };
+const DEFAULTS: BeautifulGraphSettings = { replaceUnderscores:true,capitalizeDirectories:true,maxLabelDirectories:3,forces:{...DEFAULT_FORCES},display:{...DEFAULT_DISPLAY},categoryVisibility:{},groups:[],other:{visible:true,color:OTHER_COLOR,icon:"📂"},rootIndex:{enabled:true,color:ROOT_INDEX_COLOR,icon:"🌱",includeLinked:false},otherVisible:true,groupPalette:"Beautiful Default",groupPresets:{},panels:{groups:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13},forces:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13},display:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13}},forcePresets:{},displayPresets:{},historyLimit:50 };
 
 export default class BeautifulGraphPlugin extends Plugin {
   settings: BeautifulGraphSettings = structuredClone(DEFAULTS);
-  data: BeautifulGraphData = {version:8,settings:this.settings,positions:{}};
+  data: BeautifulGraphData = {version:10,settings:this.settings,positions:{}};
   private lastGraph?: BeautifulGraphView;
   private fileExplorerBridgeInstalled = false;
   private diagnosticWrites:Promise<void>=Promise.resolve();
@@ -32,7 +32,8 @@ export default class BeautifulGraphPlugin extends Plugin {
     // Versions 1-2 could persist layouts produced by unstable or grid-bounded physics.
     migrateRevision10Panels(this.settings.panels,old?.version??0);
     migrateResponsivePanels(this.settings.panels,old?.version??0);
-    this.data={version:9,settings:this.settings,positions:(old?.version??0)>=3?(old?.positions??{}):{}};
+    migrateAdaptivePanelDefaults(this.settings.panels,old?.version??0);
+    this.data={version:10,settings:this.settings,positions:(old?.version??0)>=3?(old?.positions??{}):{}};
     this.registerView(BEAUTIFUL_GRAPH_VIEW,(leaf)=>new BeautifulGraphView(leaf,this));
     this.addCommand({id:"open-beautiful-graph",name:"Open Beautiful Graph",callback:()=>void this.openGraph()});
     this.addRibbonIcon("orbit","Open Beautiful Graph",()=>void this.openGraph());

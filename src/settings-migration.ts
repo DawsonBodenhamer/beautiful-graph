@@ -31,3 +31,16 @@ export function resolveLegacyPanelGeometry(state:PanelState,hostWidth:number,hos
   delete state.legacyPixels;
   return true;
 }
+
+export function migrateAdaptivePanelDefaults(panels:Record<string,PanelState>,fromVersion:number):void {
+  if(fromVersion>=10)return;
+  const oldHeights:Record<string,number>={groups:.48,forces:.30,display:.40};
+  for(const [id,state] of Object.entries(panels)){
+    if(state.width!==undefined&&Math.abs(state.width-.18)<.005)state.width=.13;
+    const oldHeight=oldHeights[id];
+    if(state.pinned!==false&&oldHeight!==undefined&&(state.height===undefined||Math.abs(state.height-oldHeight)<.015)){
+      state.autoHeight=true;
+      delete state.height;
+    }else if(state.autoHeight===undefined)state.autoHeight=state.height===undefined;
+  }
+}
