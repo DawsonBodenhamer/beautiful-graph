@@ -1,8 +1,7 @@
 export interface ForcePoint { x:number; y:number }
 
-export function centerAcceleration(node:ForcePoint,familyCenter:ForcePoint,graphCenter:ForcePoint,envelopeRadius:number,strength:number):ForcePoint {
-  const macroX=(graphCenter.x-familyCenter.x)*.0025*strength,macroY=(graphCenter.y-familyCenter.y)*.0025*strength,dx=node.x-graphCenter.x,dy=node.y-graphCenter.y,distance=Math.hypot(dx,dy)||1,excess=Math.max(0,distance-Math.max(1,envelopeRadius)),envelope=.0018*strength*excess;
-  return{x:macroX-dx/distance*envelope,y:macroY-dy/distance*envelope};
+export function centroidAcceleration(source:ForcePoint,target:ForcePoint,strength:number,coefficient:number):ForcePoint {
+  return{x:(target.x-source.x)*coefficient*strength,y:(target.y-source.y)*coefficient*strength};
 }
 
 export function repelFactor(distanceSquared:number,count:number,strength:number,alpha:number):number {

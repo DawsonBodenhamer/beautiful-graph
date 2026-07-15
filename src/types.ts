@@ -27,7 +27,7 @@ export interface BeautifulGraphSettings {
   historyLimit: number;
 }
 export interface GraphPoint { x: number; y: number }
-export interface BeautifulGraphData { version: number; settings: BeautifulGraphSettings; positions: Record<string, GraphPoint> }
+export interface BeautifulGraphData { version: number; layoutRevision:number; settings: BeautifulGraphSettings; positions: Record<string, GraphPoint> }
 export interface GraphNode extends GraphPoint {
   id: string; path: string; label: string; folder: string; category: string; color: string; icon: string;
   degree: number; readonly baseRadius: number; radius: number; description: string; visible: boolean; hub: boolean; alwaysLabel:boolean; rootIndexStyled:boolean;

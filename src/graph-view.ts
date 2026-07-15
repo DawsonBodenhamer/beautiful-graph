@@ -105,6 +105,7 @@ export class BeautifulGraphView extends ItemView {
   private nodeScaleFrame=0;
   private nodeScaleGeneration=0;
   private pendingNodeScaleFinal=false;
+  private forceAnalysisRunning=false;
 
   constructor(leaf: WorkspaceLeaf, private plugin: BeautifulGraphPlugin) { super(leaf); }
   getViewType(): string { return BEAUTIFUL_GRAPH_VIEW; }
@@ -173,11 +174,14 @@ export class BeautifulGraphView extends ItemView {
   }
 
   private previewInitialLayout():void{if(!this.startupPending)return;for(const node of this.model.nodes){const target=this.physicsTargets.get(node.id);if(target){node.x=target.x;node.y=target.y}}for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld])layer.alpha=1;this.fit(false);this.renderGraph()}
-  private finishInitialLayout():void {
+  private applyPhysicsTargets():void {for(const node of this.model.nodes){const target=this.physicsTargets.get(node.id);if(target){node.x=target.x;node.y=target.y}}this.physicsTargets.clear();this.motionUntil=0}
+  private finishForceAnalysis(accepted:boolean):void {if(!this.forceAnalysisRunning)return;this.forceAnalysisRunning=false;new Notice(accepted?"Force analysis converged and was saved.":"Force analysis stopped before residual convergence. The layout remains pending for another automatic pass.");this.createPanels()}
+  private finishInitialLayout(accepted:boolean):void {
     if(!this.startupPending)return;this.startupPending=false;if(this.startupTimer)window.clearTimeout(this.startupTimer);this.startupTimer=undefined;
-    for(const node of this.model.nodes){const target=this.physicsTargets.get(node.id);if(target){node.x=target.x;node.y=target.y}}
-    this.physicsTargets.clear();this.motionUntil=0;this.fit(false);for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld])layer.alpha=1;this.plugin.needsLayoutConvergence=false;for(const node of this.model.nodes)this.plugin.data.positions[node.path]={x:node.x,y:node.y};void this.plugin.persistData();this.renderGraph();
+    this.applyPhysicsTargets();this.fit(false);for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld])layer.alpha=1;if(accepted)this.plugin.markLayoutConverged();this.savePositions();this.finishForceAnalysis(accepted);this.renderGraph();
   }
+
+  private finishThoroughConvergence(accepted:boolean):void {this.applyPhysicsTargets();if(accepted)this.plugin.markLayoutConverged();this.savePositions();this.finishForceAnalysis(accepted);this.renderGraph()}
 
   private startActiveWorker(force=false,initial:{heat?:number;thorough?:boolean}={}):void {
     this.physicsFrozen=false;
@@ -185,10 +189,10 @@ export class BeautifulGraphView extends ItemView {
     this.worker?.terminate();this.physicsTargets.clear();const generation=++this.workerGeneration;this.workerNodeOrder=active.map(node=>node.id);
     this.worker = createPhysicsWorker();
     this.worker.onmessage = (event) => {
-      if(event.data.generation!==this.workerGeneration||!event.data.coords||this.physicsFrozen)return;const type=event.data.type as string;if(!["tick","settled","preview","projection"].includes(type)||type==="projection"&&(event.data.scaleGeneration??0)<this.nodeScaleGeneration)return;const coords=event.data.coords as Float32Array;
+      if(event.data.generation!==this.workerGeneration||!event.data.coords||this.physicsFrozen)return;const type=event.data.type as string;if(!["tick","settled","preview","projection","incomplete","analysisRunning"].includes(type)||type==="projection"&&(event.data.scaleGeneration??0)<this.nodeScaleGeneration)return;const coords=event.data.coords as Float32Array;
       for(let index=0;index<this.workerNodeOrder.length;index++){const id=this.workerNodeOrder[index],x=coords[index*2],y=coords[index*2+1];if(id===undefined||x===undefined||y===undefined)continue;if(type==="projection"){const node=this.views.get(id)?.node;if(node){node.x=x;node.y=y}this.physicsTargets.delete(id)}else this.physicsTargets.set(id,{x,y})}this.motionUntil=type==="projection"?0:performance.now()+180;if(this.activeLenses.size)this.lensGeometryDirty=true;
       if(event.data.type==="tick")this.physicsTicks++;
-      if(event.data.type==="settled"&&this.startupPending){this.finishInitialLayout();return}
+      if((type==="settled"||type==="incomplete")&&event.data.thorough){const accepted=type==="settled";if(this.startupPending)this.finishInitialLayout(accepted);else this.finishThoroughConvergence(accepted);return}
       this.queueRender();
     };
     const edges=this.model.edges.filter(edge=>ids.has(edge.source)&&ids.has(edge.target));
@@ -380,7 +384,7 @@ export class BeautifulGraphView extends ItemView {
     const advanced=body.createEl("details",{cls:"beautiful-advanced-links"});advanced.createEl("summary",{text:"Advanced links"});const advancedBody=advanced.createDiv(),linkConfigs=[["link","Link force",0,DEFAULT_FORCES.link,.6],["distance","Link distance",10,DEFAULT_FORCES.distance,1500],["curvature","Link curvature",-2,DEFAULT_FORCES.curvature,2]] as const;
     for(const [key,label,min,mid,max] of linkConfigs)inputs.set(key,this.mappedSlider(advancedBody,label,this.plugin.settings.forces[key],min,mid,max,v=>{this.plugin.settings.forces[key]=v;void this.plugin.persistData();this.updateForces()}));
     const sync=()=>{for(const [key,,min,mid,max] of [...configs,...linkConfigs])this.setMappedValue(inputs.get(key)!,this.plugin.settings.forces[key],min,mid,max);this.setMappedValue(sibling,this.plugin.settings.forces.siblingLinkForce,0,DEFAULT_FORCES.siblingLinkForce,2)};
-    const reset=body.createEl("button",{cls:"beautiful-panel-reset",text:"Reset forces"});reset.onclick=()=>{this.pushHistory();this.plugin.settings.forces={...DEFAULT_FORCES};sync();void this.plugin.persistData();this.updateForces()};const tune=body.createEl("button",{cls:"beautiful-panel-reset",text:"Analyze & Tune"});tune.onclick=()=>{this.pushHistory();this.autoTuneForces();sync()};this.addPresetControls(body,"forces",sync);
+    const reset=body.createEl("button",{cls:"beautiful-panel-reset",text:"Reset forces"});reset.onclick=()=>{this.pushHistory();this.plugin.settings.forces={...DEFAULT_FORCES};sync();void this.plugin.persistData();this.updateForces()};const tune=body.createEl("button",{cls:"beautiful-panel-reset",text:this.forceAnalysisRunning?"Analyzing…":"Analyze & Tune"});tune.disabled=this.forceAnalysisRunning;tune.onclick=()=>{this.pushHistory();this.autoTuneForces();sync()};this.addPresetControls(body,"forces",sync);
   })}
   private createDisplayPanel():void {this.createPanel("display","Display",body=>{
     const inputs=new Map<string,HTMLInputElement>(),configs=[["textFade","Text fade threshold",2,DEFAULT_DISPLAY.textFade,80],["nodeSize","Node size",.2,DEFAULT_DISPLAY.nodeSize,8],["linkThickness","Link thickness",.1,DEFAULT_DISPLAY.linkThickness,6],["glow","Glow intensity",0,DEFAULT_DISPLAY.glow,2],["glowSize","Glow size",0,DEFAULT_DISPLAY.glowSize,4]] as const;
@@ -454,7 +458,7 @@ export class BeautifulGraphView extends ItemView {
   private updateNodeScale(final=false):void {this.invalidateNodeStyles();this.lensGeometryDirty=true;this.pendingNodeScaleFinal=this.pendingNodeScaleFinal||final;if(this.nodeScaleFrame)return;this.nodeScaleFrame=requestAnimationFrame(()=>{this.nodeScaleFrame=0;const scaleGeneration=++this.nodeScaleGeneration,isFinal=this.pendingNodeScaleFinal;this.pendingNodeScaleFinal=false;this.worker?.postMessage({type:"nodeScale",value:this.plugin.settings.display.nodeSize,final:isFinal,scaleGeneration,epsilonWorld:.25/Math.max(.08,this.scale)});this.renderGraph()})}
   private analyzedForceProfile():BeautifulGraphSettings["forces"]|undefined {const nodes=this.model.nodes.filter(n=>n.visible),visibleIds=new Set(nodes.map(n=>n.id));if(!nodes.length)return;const edgeCount=this.model.edges.reduce((n,e)=>n+Number(visibleIds.has(e.source)&&visibleIds.has(e.target)),0),avgDegree=edgeCount*2/nodes.length,sizeFactor=Math.max(.72,Math.min(1.32,Math.sqrt(1430/nodes.length))),degreeFactor=Math.max(.82,Math.min(1.18,Math.sqrt(3.2/Math.max(.5,avgDegree))));return{...this.plugin.settings.forces,center:Number((DEFAULT_FORCES.center/Math.sqrt(sizeFactor)).toFixed(3)),repel:Number((DEFAULT_FORCES.repel*sizeFactor).toFixed(3)),link:Number((DEFAULT_FORCES.link*degreeFactor).toFixed(3)),distance:Math.round(DEFAULT_FORCES.distance*Math.max(.78,Math.min(1.25,sizeFactor)))}}
   private applyAnalyzedForceProfile():void {const profile=this.analyzedForceProfile();if(!profile)return;this.plugin.settings.forces=profile;void this.plugin.persistData()}
-  private autoTuneForces():void {this.applyAnalyzedForceProfile();this.updateForces(true);new Notice("Forces analyzed. Running a full convergence pass…")}
+  private autoTuneForces():void {if(this.forceAnalysisRunning){new Notice("Force analysis is already running.");return}this.forceAnalysisRunning=true;this.applyAnalyzedForceProfile();this.updateForces(true);this.createPanels();new Notice("Forces analyzed. Running one full convergence pass…")}
 
   private scheduleModelRefresh():void {
     if(this.modelRefreshTimer)window.clearTimeout(this.modelRefreshTimer);

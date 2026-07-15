@@ -1,19 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { centerAcceleration, repelFactor } from "../src/center-force.ts";
+import { centroidAcceleration, repelFactor } from "../src/center-force.ts";
 
-test("center contracts family centroids without changing local spacing inside the envelope",()=>{
-  const graph={x:0,y:0},family={x:100,y:0},left={x:90,y:0},right={x:110,y:0},a=centerAcceleration(left,family,graph,1_000,.51876),b=centerAcceleration(right,family,graph,1_000,.51876);
-  assert.ok(a.x<0&&b.x<0);
-  assert.equal(a.x,b.x);
+test("family centroid translation preserves component-local geometry",()=>{
+  const family={x:100,y:0},graph={x:0,y:0},left={x:90,y:0},right={x:110,y:0},a=centroidAcceleration(family,graph,.51876,.0025),b=centroidAcceleration(family,graph,.51876,.0025);
+  assert.ok(a.x<0);assert.deepEqual(a,b);
   const before=right.x-left.x,after=(right.x+b.x)-(left.x+a.x);
   assert.equal(after,before);
 });
 
-test("center outer envelope pulls radial outliers inward",()=>{
-  const acceleration=centerAcceleration({x:300,y:0},{x:0,y:0},{x:0,y:0},200,.51876);
-  assert.ok(acceleration.x<0);
-  assert.equal(acceleration.y,0);
+test("a remote component receives topology-centroid recovery without a radial envelope",()=>{
+  const family={x:100,y:0},left={x:2990,y:-10},right={x:3010,y:10},acceleration=centroidAcceleration({x:3000,y:0},family,1.2,.0012);
+  assert.ok(acceleration.x<0);assert.equal(acceleration.y,0);
+  const movedLeft={x:left.x+acceleration.x,y:left.y+acceleration.y},movedRight={x:right.x+acceleration.x,y:right.y+acceleration.y};
+  assert.equal(Math.hypot(movedRight.x-movedLeft.x,movedRight.y-movedLeft.y),Math.hypot(right.x-left.x,right.y-left.y));
 });
 
 test("repel remains an independent pairwise spacing control",()=>{
