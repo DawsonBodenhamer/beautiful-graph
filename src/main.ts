@@ -4,7 +4,7 @@ import { BeautifulGraphSettingTab } from "./settings";
 import type { BeautifulGraphData, BeautifulGraphSettings } from "./types";
 import { DEFAULT_DISPLAY, DEFAULT_FORCES } from "./defaults";
 import { defaultGroupIcon, GROUP_PALETTE, ROOT_INDEX_COLOR } from "./groups";
-import { migrateAdaptivePanelDefaults, migrateNamedDefaults, migrateResponsivePanels, migrateRevision10Panels, migrateRevision15Glow, migrateRevision19Settings, migrateRevision20Settings, migrateRevision25Settings } from "./settings-migration";
+import { migrateAdaptivePanelDefaults, migrateNamedDefaults, migrateResponsivePanels, migrateRevision10Panels, migrateRevision15Glow, migrateRevision19Settings, migrateRevision20Settings, migrateRevision25Settings, migrateRevision29Settings } from "./settings-migration";
 import { SettingsHistory } from "./settings-history";
 import { SnapshotWriteQueue } from "./snapshot-write-queue";
 import { CURRENT_LAYOUT_REVISION, persistedLayoutRevision } from "./layout-state";
@@ -13,7 +13,7 @@ const DEFAULTS: BeautifulGraphSettings = { replaceUnderscores:true,capitalizeDir
 
 export default class BeautifulGraphPlugin extends Plugin {
   settings: BeautifulGraphSettings = structuredClone(DEFAULTS);
-  data: BeautifulGraphData = {version:20,layoutRevision:0,settings:this.settings,positions:{}};
+  data: BeautifulGraphData = {version:21,layoutRevision:0,settings:this.settings,positions:{}};
   private lastGraph?: BeautifulGraphView;
   private graphViews=new Set<BeautifulGraphView>();
   private settingsHistory=new SettingsHistory<BeautifulGraphSettings>(50);
@@ -31,7 +31,7 @@ export default class BeautifulGraphPlugin extends Plugin {
     this.settings.rootIndex={...DEFAULTS.rootIndex,...legacy?.rootIndex};
     if(!legacy?.rootIndex?.icon)this.settings.rootIndex.icon="🌱";
     if(!this.settings.other.icon)this.settings.other.icon="📂";
-    for(const [id,state] of Object.entries(this.settings.panels)){if(state.collapsed&&id==="forces")state.collapsed=false;if(!state.collapsed&&state.height!==undefined&&state.height>1&&state.height<=44)delete state.height}
+    for(const state of Object.values(this.settings.panels))if(!state.collapsed&&state.height!==undefined&&state.height>1&&state.height<=44)delete state.height;
     if(this.settings.groupPalette==="Beautiful Balanced")this.settings.groupPalette="Beautiful Default";
     this.settings.groups=(this.settings.groups??[]).map((g,i)=>({id:g.id??`${g.origin??"manual"}:${g.root}`,root:g.root,color:g.color??GROUP_PALETTE[i%GROUP_PALETTE.length]!,icon:g.icon||defaultGroupIcon(g.root),visible:g.visible!==false,origin:g.origin??"manual",order:i}));
     if((old?.version??0)<7&&this.settings.groupPalette==="Beautiful Default"){const colors:Record<string,string>={dev:"#20B2CF",outputs:"#1FDB2C",raw:"#4E606E",wiki:"#D37203"};for(const group of this.settings.groups)group.color=colors[group.root.toLowerCase()]??group.color}
@@ -45,9 +45,10 @@ export default class BeautifulGraphPlugin extends Plugin {
     const revision19Migration=migrateRevision19Settings(this.settings,old?.version??0);
     const revision20Migration=migrateRevision20Settings(this.settings,old?.version??0);
     const revision25Migration=migrateRevision25Settings(this.settings,old?.version??0);
+    const revision29Migration=migrateRevision29Settings(this.settings,old?.version??0);
     this.settingsHistory.setLimit(this.settings.historyLimit);
-    this.data={version:20,layoutRevision:persistedLayoutRevision(old?.layoutRevision),settings:this.settings,positions:(old?.version??0)>=3?(old?.positions??{}):{}};
-    if((old?.version??0)!==20||namedDefaultMigration.forces||namedDefaultMigration.display||revision19Migration||revision20Migration||revision25Migration)await this.persistData();
+    this.data={version:21,layoutRevision:persistedLayoutRevision(old?.layoutRevision),settings:this.settings,positions:(old?.version??0)>=3?(old?.positions??{}):{}};
+    if((old?.version??0)!==21||namedDefaultMigration.forces||namedDefaultMigration.display||revision19Migration||revision20Migration||revision25Migration||revision29Migration)await this.persistData();
     this.registerView(BEAUTIFUL_GRAPH_VIEW,(leaf)=>new BeautifulGraphView(leaf,this));
     this.addCommand({id:"open-beautiful-graph",name:"Open Beautiful Graph",callback:()=>void this.openGraph()});
     this.addRibbonIcon("orbit","Open Beautiful Graph",()=>void this.openGraph());

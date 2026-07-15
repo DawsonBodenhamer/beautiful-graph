@@ -36,8 +36,8 @@ export function savedFamilyAnchors(nodes:Iterable<FamilyPath>,positions:Record<s
   return new Map([...totals].map(([family,total])=>[family,{x:total.x/total.count,y:total.y/total.count}]));
 }
 
-export function familySeedPosition(path:string,index:number,family:string,anchors:ReadonlyMap<string,GraphPoint>,fallback:GraphPoint):GraphPoint {
-  const anchor=anchors.get(family)??fallback,seed=[...path].reduce((value,char)=>Math.imul(value^char.charCodeAt(0),16777619),2166136261)>>>0,angle=seed/4294967296*Math.PI*2,spread=24+Math.sqrt(index+1)*1.8;
+export function familySeedPosition(path:string,index:number,family:string,anchors:ReadonlyMap<string,GraphPoint>,fallback:GraphPoint,spacing=12):GraphPoint {
+  const anchor=anchors.get(family)??fallback,seed=[...family].reduce((value,char)=>Math.imul(value^char.charCodeAt(0),16777619),2166136261)>>>0,baseAngle=seed/4294967296*Math.PI*2,goldenAngle=Math.PI*(3-Math.sqrt(5)),angle=baseAngle+index*goldenAngle,spread=Math.max(8,spacing)*Math.sqrt(index+1);
   return{x:anchor.x+Math.cos(angle)*spread,y:anchor.y+Math.sin(angle)*spread};
 }
 

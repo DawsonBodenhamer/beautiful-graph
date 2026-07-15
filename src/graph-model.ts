@@ -4,6 +4,7 @@ import { effectiveGroup, nodeAllowed } from "./groups";
 import { applyDerivedNodePresentation } from "./node-presentation";
 import { deriveGraphRelationships } from "./graph-relationships";
 import { familySeedPosition, savedFamilyAnchors, savedLayoutStats } from "./layout-persistence";
+import { orphanAllowed } from "./presentation";
 
 const CATEGORY = {
   Wiki: ["#44D7B6", "📜"], Raw: ["#FF8A4C", "🧺"], Development: ["#9B87F5", "🛠️"],
@@ -57,7 +58,7 @@ export function buildGraphModel(app: App, settings: BeautifulGraphSettings, posi
       id: file.path, path: file.path, label: title(file, settings.replaceUnderscores,settings.capitalizeDirectories), folder: file.parent?.path ?? "",
       family:relationships.familyByNode.get(file.path)??`folder:${file.parent?.path??""}`,
       category, color: group?.color??settings.other.color, icon:String(frontmatter?.graph_icon ?? group?.icon ?? settings.other.icon ?? icon), degree: d,
-      baseRadius:radius, radius, description: String(frontmatter?.description ?? ""), visible: nodeAllowed(file.path,settings.groups,settings.other.visible), hub,
+      baseRadius:radius, radius, description: String(frontmatter?.description ?? ""), visible: nodeAllowed(file.path,settings.groups,settings.other.visible)&&orphanAllowed(d,settings.display.showOrphans), hub,
       alwaysLabel:false,rootIndexStyled:false,
       x: savedSeed ? savedSeed.x*savedScale : savedCenter.x+Math.cos(angle)*spread,
       y: savedSeed ? savedSeed.y*savedScale : savedCenter.y+Math.sin(angle)*spread,
@@ -66,9 +67,10 @@ export function buildGraphModel(app: App, settings: BeautifulGraphSettings, posi
   applyDerivedNodePresentation(nodes,edges,settings);
   if(useSavedLayout){
     const familyAnchors=savedFamilyAnchors(nodes,positions);
-    for(const [index,node] of nodes.entries()){
+    const familyOrdinals=new Map<string,number>();
+    for(const node of nodes){
       if(positions[node.path])continue;
-      const seed=familySeedPosition(node.path,index,node.family,familyAnchors,savedCenter);node.x=seed.x;node.y=seed.y;
+      const ordinal=familyOrdinals.get(node.family)??0;familyOrdinals.set(node.family,ordinal+1);const spacing=Math.max(12,node.radius*settings.display.nodeSize+5),seed=familySeedPosition(node.path,ordinal,node.family,familyAnchors,savedCenter,spacing);node.x=seed.x;node.y=seed.y;
     }
   }
   return { nodes, edges };

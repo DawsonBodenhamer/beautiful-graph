@@ -18,6 +18,7 @@ export const DEFAULT_DISPLAY: GraphDisplay = {
   glow: 0.679144,
   glowSize: 1.3,
   showSiblingLinks: false,
+  showOrphans: true,
   showLinkedInSearch: false,
   lensOpacity: 0.26,
   lensRadius: 1.74,

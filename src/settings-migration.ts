@@ -47,6 +47,12 @@ export function migrateRevision25Settings(settings:BeautifulGraphSettings,fromVe
   return true;
 }
 
+export function migrateRevision29Settings(settings:BeautifulGraphSettings,fromVersion:number):boolean {
+  if(fromVersion>=21)return false;
+  settings.savedNodeCount=Math.max(5,Math.min(100,Math.round(Number.isFinite(settings.savedNodeCount)?settings.savedNodeCount:100)));
+  return true;
+}
+
 export function migrateRevision15Glow(display:{glow:number},fromVersion:number):boolean {
   if(fromVersion>=12||Math.abs(display.glow-.59056)>.000001)return false;
   display.glow=.679144;
