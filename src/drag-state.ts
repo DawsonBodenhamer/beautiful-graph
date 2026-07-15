@@ -6,9 +6,10 @@ export interface DragState { pointerId:number; start:ClientPoint; offset:ClientP
 
 export function acceptsHoverWhileDragging(draggedId:string|undefined):boolean{return draggedId===undefined}
 export function shouldClearHoverOnPointerOut(draggedId:string|undefined):boolean{return draggedId===undefined}
-export function dragReleaseAction(moved:boolean,cancelled:boolean):"pin"|"clear"{return moved||cancelled?"clear":"pin"}
 export function suppressesPostDragTap(now:number,until:number):boolean{return now<until}
 export function dragPointerDisposition(owner:number,eventPointer:number,buttons:number):"foreign"|"move"|"release" {if(owner!==eventPointer)return"foreign";return buttons&1?"move":"release"}
+export function startsPhysicsDrag(wasMoved:boolean,isMoved:boolean):boolean{return !wasMoved&&isMoved}
+export function endsPhysicsDrag(wasMoved:boolean):boolean{return wasMoved}
 
 export function clientToWorld(point:ClientPoint,rect:HostRect,camera:CameraTransform):ClientPoint {
   return{x:(point.x-rect.left-camera.x)/camera.scale,y:(point.y-rect.top-camera.y)/camera.scale};
