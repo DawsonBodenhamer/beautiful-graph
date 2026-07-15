@@ -1,6 +1,6 @@
 import type { App, TFile } from "obsidian";
 import type { BeautifulGraphSettings, GraphEdge, GraphModel, GraphNode, GraphPoint } from "./types";
-import { effectiveGroup, nodeAllowed, OTHER_COLOR } from "./groups";
+import { effectiveGroup, nodeAllowed } from "./groups";
 import { applyDerivedNodePresentation } from "./node-presentation";
 import { deriveGraphRelationships } from "./graph-relationships";
 

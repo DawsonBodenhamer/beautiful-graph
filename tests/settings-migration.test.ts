@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { migrateAdaptivePanelDefaults, migrateNamedDefaults, migrateResponsivePanels, migrateRevision10Panels, migrateRevision15Glow, resolveLegacyPanelGeometry } from "../src/settings-migration.ts";
+import { migrateAdaptivePanelDefaults, migrateNamedDefaults, migrateResponsivePanels, migrateRevision10Panels, migrateRevision15Glow, migrateRevision19Settings, resolveLegacyPanelGeometry } from "../src/settings-migration.ts";
 import type { BeautifulGraphSettings } from "../src/types.ts";
 
 test("known obsolete panel signatures migrate",()=>{
@@ -64,3 +64,10 @@ test("missing named preset does not block promotion of the other domain",()=>{
   const name="Make this the new defaults",settings={forces:{center:1},display:{glow:1},forcePresets:{},displayPresets:{[name]:{glow:.6}}} as unknown as BeautifulGraphSettings;
   assert.deepEqual(migrateNamedDefaults(settings,12),{forces:false,display:true});assert.deepEqual(settings.forces,{center:1});assert.deepEqual(settings.display,{glow:.6});
 });
+
+test("revision 19 promotes the exact lowercase presets and preserves them",()=>{const name="this preset to be new defaults",settings={
+  forces:{center:.1,repel:.1,link:.1,distance:20,curvature:0,stretchiness:0,siblingLinkForce:false},display:{textFade:3,nodeSize:.3,linkThickness:.2,glow:.1,glowSize:.2,showSiblingLinks:true,showLinkedInSearch:false,lensOpacity:.1,lensRadius:.6,recenterOnFocus:false},
+  forcePresets:{[name]:{center:1.23589544,repel:1,link:.041472,distance:362.874,curvature:0,stretchiness:.08224,siblingLinkForce:true}},displayPresets:{[name]:{textFade:24.748992,nodeSize:2.866074,linkThickness:1.25833,glow:.679144,glowSize:1.3,showSiblingLinks:false,showLinkedInSearch:false,lensOpacity:.26,lensRadius:1.74,recenterOnFocus:false}},groups:[],groupPalette:"Beautiful Default",other:{visible:true,color:"#65635d",icon:"📂"},groupPresets:{},
+} as unknown as BeautifulGraphSettings;assert.equal(migrateRevision19Settings(settings,14),true);assert.equal(settings.forces.siblingLinkForce,1);assert.equal(settings.display.nodeSize,2.866074);assert.equal(settings.display.iconMode,"color");assert.equal(settings.other.colorMode,"palette");assert.ok(settings.forcePresets[name]);assert.ok(settings.displayPresets[name]);assert.equal(migrateRevision19Settings(settings,15),false)});
+
+test("revision 19 migrates sibling booleans in every preset and keeps negative compliance",()=>{const settings={forces:{center:1,repel:1,link:.1,distance:100,curvature:0,stretchiness:-.4,siblingLinkForce:false},display:{textFade:20,nodeSize:1,linkThickness:1,glow:1,glowSize:1,lensOpacity:.2,lensRadius:1},forcePresets:{off:{center:1,repel:1,link:.1,distance:100,curvature:0,stretchiness:-.8,siblingLinkForce:false},on:{center:1,repel:1,link:.1,distance:100,curvature:0,stretchiness:.2,siblingLinkForce:true}},displayPresets:{},groups:[],groupPalette:"Beautiful Default",other:{visible:true,color:"#ffbb00",icon:"📂"},groupPresets:{}} as unknown as BeautifulGraphSettings;migrateRevision19Settings(settings,14);assert.equal(settings.forces.siblingLinkForce,0);assert.equal(settings.forces.stretchiness,-.4);assert.equal(settings.forcePresets.off?.siblingLinkForce,0);assert.equal(settings.forcePresets.off?.stretchiness,-.8);assert.equal(settings.forcePresets.on?.siblingLinkForce,1);assert.equal(settings.other.colorMode,"custom")});

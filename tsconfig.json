@@ -9,6 +9,7 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
     "moduleResolution": "node",
+    "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
@@ -22,4 +23,3 @@
     "src/**/*.ts"
   ]
 }
-

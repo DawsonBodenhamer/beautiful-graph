@@ -9,8 +9,10 @@ export const GROUP_PALETTES:Record<string,string[]>={
   "Gruvbox Dark":["#FB4934","#B8BB26","#83A598","#FE8019","#D3869B","#8EC07C","#FABD2F","#CC241D"]
 };
 export const GROUP_PALETTE=GROUP_PALETTES["Beautiful Default"]!;
-export const OTHER_COLOR="#454A53";
 export const ROOT_INDEX_COLOR="#FFBB00";
+export const LEGACY_OTHER_COLORS=new Set(["#454A53","#65635D"]);
+export function paletteFallbackColor(groups:GraphGroup[],paletteId:string):string {const colors=GROUP_PALETTES[paletteId]??GROUP_PALETTE,ordered=groups.slice().sort((a,b)=>a.order-b.order||a.root.localeCompare(b.root));return colors[ordered.length%colors.length]!}
+export function fallbackColorMode(color:string|undefined):"palette"|"custom" {return !color||LEGACY_OTHER_COLORS.has(color.toUpperCase())?"palette":"custom"}
 export const inFolder=(path:string,root:string):boolean=>!root||path===root||path.startsWith(`${root}/`);
 export function effectiveGroup(path:string,groups:GraphGroup[]):GraphGroup|undefined{return groups.filter(g=>inFolder(path,g.root)).sort((a,b)=>b.root.length-a.root.length||a.order-b.order)[0]}
 export function nodeAllowed(path:string,groups:GraphGroup[],otherVisible:boolean):boolean{const matches=groups.filter(g=>inFolder(path,g.root));if(!matches.length)return otherVisible;return matches.every(g=>g.visible)}

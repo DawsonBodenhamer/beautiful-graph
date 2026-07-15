@@ -21,7 +21,7 @@ export function roundedRectRayDistance(direction:ScreenPoint,halfWidth:number,ha
 }
 
 export function tetherEndpoints(input:TetherGeometry):TetherEndpoints {
-  const dx=input.label.x-input.node.x,dy=input.label.y-input.node.y,distance=Math.hypot(dx,dy)||1,nx=dx/distance,ny=dy/distance,overlap=Math.max(0,input.overlap??1);
+  const dx=input.label.x-input.node.x,dy=input.label.y-input.node.y,distance=Math.hypot(dx,dy)||1,nx=dx/distance,ny=dy/distance,overlap=0;
   const startDistance=Math.max(0,input.nodeRadius-overlap),pillDistance=roundedRectRayDistance({x:nx,y:ny},input.pillHalfWidth,input.pillHalfHeight,input.pillRadius),endDistance=Math.max(0,pillDistance-overlap);
   return{
     start:{x:input.node.x+nx*startDistance,y:input.node.y+ny*startDistance},

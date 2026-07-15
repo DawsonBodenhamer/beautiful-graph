@@ -1,25 +1,26 @@
 import type { GraphDisplay, GraphForces } from "./types";
 
 export const DEFAULT_FORCES: GraphForces = {
-  center: 0.51876,
-  repel: 0.3084,
-  link: 0.054,
-  distance: 247,
+  center: 1.2358954399999997,
+  repel: 1,
+  link: 0.041472,
+  distance: 362.874,
   curvature: 0,
-  stretchiness: 0.04,
-  siblingLinkForce: true,
+  stretchiness: 0.08224000000000006,
+  siblingLinkForce: 1,
 };
 
 export const DEFAULT_DISPLAY: GraphDisplay = {
   arrows: false,
-  textFade: 22.014,
-  nodeSize: 1.66074,
-  linkThickness: 1.6444400000000003,
+  textFade: 24.748992,
+  nodeSize: 2.8660740000000002,
+  linkThickness: 1.2583300000000004,
   glow: 0.679144,
   glowSize: 1.3,
-  showSiblingLinks: true,
+  showSiblingLinks: false,
   showLinkedInSearch: false,
   lensOpacity: 0.26,
-  lensRadius: 1.71,
+  lensRadius: 1.74,
   recenterOnFocus: false,
+  iconMode:"color",
 };

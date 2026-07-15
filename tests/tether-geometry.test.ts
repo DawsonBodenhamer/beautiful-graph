@@ -4,11 +4,11 @@ import { roundedRectRayDistance, tetherEndpoints } from "../src/tether-geometry.
 
 const close=(actual:number,expected:number,epsilon=1e-8)=>assert.ok(Math.abs(actual-expected)<=epsilon,`${actual} != ${expected}`);
 
-test("tether overlaps horizontal and vertical opaque boundaries",()=>{
+test("tether terminates exactly at horizontal and vertical opaque boundaries",()=>{
   const horizontal=tetherEndpoints({node:{x:0,y:0},label:{x:100,y:0},nodeRadius:10,pillHalfWidth:20,pillHalfHeight:10,pillRadius:5,overlap:1});
-  assert.deepEqual(horizontal,{start:{x:9,y:0},end:{x:81,y:0}});
+  assert.deepEqual(horizontal,{start:{x:10,y:0},end:{x:80,y:0}});
   const vertical=tetherEndpoints({node:{x:0,y:0},label:{x:0,y:-100},nodeRadius:10,pillHalfWidth:20,pillHalfHeight:10,pillRadius:5,overlap:1});
-  assert.deepEqual(vertical,{start:{x:0,y:-9},end:{x:0,y:-91}});
+  assert.deepEqual(vertical,{start:{x:0,y:-10},end:{x:0,y:-90}});
 });
 
 test("corner ray intersects the rounded arc, not transparent rectangle space",()=>{

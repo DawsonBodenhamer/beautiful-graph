@@ -1,0 +1,66 @@
+{
+  "schema": 2,
+  "capturedAt": "2026-07-15T00:05:41.525Z",
+  "topologyHash": "41add6d8",
+  "settingsHash": "68cd911c",
+  "protocol": {
+    "runs": 3,
+    "runMs": 20000,
+    "warmupMs": 5000,
+    "viewport": {
+      "width": 1400,
+      "height": 900
+    },
+    "naturalPaintsOnly": true
+  },
+  "results": [
+    {
+      "run": 1,
+      "workload": "rapidDrag",
+      "sampleCount": 1153,
+      "p95Ms": 5.7,
+      "maxMs": 15.4,
+      "longTaskCount": 0,
+      "longTaskMaxMs": 0,
+      "frameGapP95Ms": 16.8,
+      "frameGapMaxMs": 44.5,
+      "workerMessages": 626,
+      "workerBytes": 5313488,
+      "pointerToPaintP95Ms": 17.3,
+      "pointerToPaintMaxMs": 40.8,
+      "pointerSampleCount": 1901
+    },
+    {
+      "run": 2,
+      "workload": "rapidDrag",
+      "sampleCount": 1130,
+      "p95Ms": 5.4,
+      "maxMs": 19.8,
+      "longTaskCount": 2,
+      "longTaskMaxMs": 82,
+      "frameGapP95Ms": 16.7,
+      "frameGapMaxMs": 83.5,
+      "workerMessages": 626,
+      "workerBytes": 5313488,
+      "pointerToPaintP95Ms": 17.1,
+      "pointerToPaintMaxMs": 84,
+      "pointerSampleCount": 1953
+    },
+    {
+      "run": 3,
+      "workload": "rapidDrag",
+      "sampleCount": 1148,
+      "p95Ms": 5.5,
+      "maxMs": 12.9,
+      "longTaskCount": 0,
+      "longTaskMaxMs": 0,
+      "frameGapP95Ms": 16.7,
+      "frameGapMaxMs": 38.9,
+      "workerMessages": 627,
+      "workerBytes": 5321976,
+      "pointerToPaintP95Ms": 17.6,
+      "pointerToPaintMaxMs": 38.3,
+      "pointerSampleCount": 1902
+    }
+  ]
+}

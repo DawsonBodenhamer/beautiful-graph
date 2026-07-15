@@ -42,7 +42,7 @@ export function applyDerivedNodePresentation(
     node.rootIndexStyled = rootStyled.has(node.path);
     node.color = node.rootIndexStyled ? settings.rootIndex.color : (group?.color ?? settings.other.color);
     node.icon = node.rootIndexStyled ? settings.rootIndex.icon : (group?.icon ?? settings.other.icon);
-    node.radius = isRoot ? ordinaryMax * 1.5 : isGroupIndex ? ordinaryMax : node.baseRadius;
+    node.radius = isRoot || isGroupIndex ? ordinaryMax : node.baseRadius;
   }
   return ordinaryMax;
 }

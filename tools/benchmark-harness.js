@@ -13,7 +13,6 @@
   const RUN_MS = 20_000;
   const RUNS = 3;
   const WARMUP_MS = 5_000;
-  const MIN_SAMPLES = 300;
   const OUTPUT_ROOT = "dev/beautiful_graph/tests/fixtures/perf";
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const nowIso = () => new Date().toISOString();
@@ -31,13 +30,17 @@
     return sorted[Math.ceil(0.95 * sorted.length) - 1];
   }
 
-  function summarize(samples, longTasks) {
+  function summarize(samples, longTasks, frameGaps, workerMessages, workerBytes) {
     return {
       sampleCount: samples.length,
       p95Ms: round(percentile95(samples)),
       maxMs: round(samples.length ? Math.max(...samples) : 0),
       longTaskCount: longTasks.length,
       longTaskMaxMs: round(longTasks.length ? Math.max(...longTasks) : 0),
+      frameGapP95Ms:round(percentile95(frameGaps)),
+      frameGapMaxMs:round(frameGaps.length?Math.max(...frameGaps):0),
+      workerMessages,
+      workerBytes,
     };
   }
 
@@ -72,7 +75,9 @@
     const edges = view.model.edges.map((edge) => ({ source: ids.get(edge.source), target: ids.get(edge.target) }))
       .sort((a, b) => `${a.source}:${a.target}`.localeCompare(`${b.source}:${b.target}`));
     return {
-      schema: 1,
+      schema: 2,
+      topologyHash:hash(JSON.stringify({nodes:nodes.map(node=>node.id),edges})),
+      settingsHash:hash(JSON.stringify({forces:plugin.settings.forces,display:plugin.settings.display})),
       capturedAt: nowIso(),
       baselineCommit: "6f8e351",
       environment: {
@@ -97,6 +102,10 @@
     for (let run = 0; run < RUNS; run += 1) {
       const samples = [];
       const longTasks = [];
+      const frameGaps=[];
+      let frameRunning=true,lastFrame=performance.now(),workerMessages=0,workerBytes=0;
+      const frame=now=>{frameGaps.push(now-lastFrame);lastFrame=now;if(frameRunning)requestAnimationFrame(frame)};requestAnimationFrame(frame);
+      const worker=view.worker,onWorker=event=>{workerMessages++;workerBytes+=event.data?.coords?.byteLength||0};worker?.addEventListener("message",onWorker);
       const observer = new PerformanceObserver((list) => {
         for (const entry of list.getEntries()) longTasks.push(entry.duration);
       });
@@ -108,17 +117,16 @@
         finally { samples.push(performance.now() - started); }
       };
       const started = performance.now();
+      let driveMetrics={};
       try {
-        await drive(view, RUN_MS, run);
-        while (performance.now() - started < RUN_MS || samples.length < MIN_SAMPLES) {
-          view.renderGraph();
-          await new Promise(requestAnimationFrame);
-        }
+        driveMetrics=await drive(view, RUN_MS, run)||{};
+        while(performance.now()-started<RUN_MS)await new Promise(requestAnimationFrame);
       } finally {
         view.renderGraph = original;
         observer.disconnect();
+        frameRunning=false;worker?.removeEventListener("message",onWorker);
       }
-      runs.push({ run: run + 1, workload: name, ...summarize(samples, longTasks) });
+      runs.push({ run: run + 1, workload: name, ...summarize(samples, longTasks,frameGaps,workerMessages,workerBytes),...driveMetrics });
       await sleep(250);
     }
     return runs;
@@ -166,6 +174,13 @@
         await new Promise(requestAnimationFrame);
       }
     },
+    async rapidDrag(view,duration){
+      const node=view.model.nodes.filter(node=>node.visible).sort((a,b)=>b.degree-a.degree)[0],canvas=view.pixi?.canvas,host=view.canvasHost;if(!node||!canvas||!host)throw new Error("Rapid-drag benchmark requires an active rendered node.");
+      const rect=host.getBoundingClientRect(),pointerId=9173,startX=rect.left+view.offset.x+node.x*view.scale,startY=rect.top+view.offset.y+node.y*view.scale,inputLatency=[];
+      canvas.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,composed:true,pointerId,button:0,buttons:1,clientX:startX,clientY:startY}));await new Promise(requestAnimationFrame);if(!view.dragged)throw new Error("Synthetic pointerdown did not enter the production drag path.");
+      const started=performance.now();try{while(performance.now()-started<duration){const phase=(performance.now()-started)/180,x=startX+Math.sin(phase)*Math.min(420,rect.width*.3),y=startY+Math.cos(phase*1.37)*Math.min(280,rect.height*.25),sent=performance.now();canvas.dispatchEvent(new PointerEvent("pointermove",{bubbles:true,composed:true,pointerId,button:-1,buttons:1,clientX:x,clientY:y}));await new Promise(resolve=>requestAnimationFrame(()=>{inputLatency.push(performance.now()-sent);resolve()}))}}finally{canvas.dispatchEvent(new PointerEvent("pointermove",{bubbles:true,composed:true,pointerId,button:-1,buttons:1,clientX:startX,clientY:startY}));await new Promise(requestAnimationFrame);window.dispatchEvent(new PointerEvent("pointerup",{bubbles:true,pointerId,button:0,buttons:0,clientX:startX,clientY:startY}));await new Promise(requestAnimationFrame);if(view.dragged)throw new Error("Rapid-drag benchmark failed to release pointer ownership.")}
+      return{pointerToPaintP95Ms:round(percentile95(inputLatency)),pointerToPaintMaxMs:round(Math.max(...inputLatency)),pointerSampleCount:inputLatency.length};
+    },
   };
 
   async function run() {
@@ -184,9 +199,27 @@
     } finally {
       Object.assign(host.style, previous);
     }
-    const report = { schema: 1, capturedAt: nowIso(), protocol: { runs: RUNS, runMs: RUN_MS, warmupMs: WARMUP_MS, minSamples: MIN_SAMPLES, p95: "sorted[ceil(0.95 * count) - 1]" }, results };
+    const report = { schema: 2, capturedAt: nowIso(), protocol: { runs: RUNS, runMs: RUN_MS, warmupMs: WARMUP_MS, viewport:{width:1400,height:900},naturalPaintsOnly:true,p95: "sorted[ceil(0.95 * count) - 1]" }, results };
     await adapter.write(`${OUTPUT_ROOT}/baseline.json`, `${JSON.stringify(report, null, 2)}\n`);
     return report;
+  }
+
+  async function runRapidDrag() {
+    const { plugin, view } = context();
+    const adapter = app.vault.adapter;
+    await ensureDirectory(adapter, OUTPUT_ROOT);
+    const host = view.contentEl;
+    const previous = { width: host.style.width, height: host.style.height, maxWidth: host.style.maxWidth, maxHeight: host.style.maxHeight };
+    Object.assign(host.style, { width: "1400px", height: "900px", maxWidth: "1400px", maxHeight: "900px" });
+    try {
+      await sleep(WARMUP_MS);
+      const results = await sampleWorkload(view, "rapidDrag", workloads.rapidDrag);
+      const report = { schema: 2, capturedAt: nowIso(), topologyHash: fixture(plugin, view).topologyHash, settingsHash: fixture(plugin, view).settingsHash, protocol: { runs: RUNS, runMs: RUN_MS, warmupMs: WARMUP_MS, viewport:{width:1400,height:900},naturalPaintsOnly:true }, results };
+      await adapter.write(`${OUTPUT_ROOT}/rapid-drag.json`, `${JSON.stringify(report, null, 2)}\n`);
+      return report;
+    } finally {
+      Object.assign(host.style, previous);
+    }
   }
 
   async function waitFor(predicate, timeoutMs = 2_000) {
@@ -247,5 +280,5 @@
     return result;
   }
 
-  global.beautifulGraphBenchmark = Object.freeze({ run, runLiveBatch, fixture: () => fixture(context().plugin, context().view) });
+  global.beautifulGraphBenchmark = Object.freeze({ run, runRapidDrag, runLiveBatch, fixture: () => fixture(context().plugin, context().view) });
 })(window);

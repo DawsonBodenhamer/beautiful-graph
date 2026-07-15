@@ -1,6 +1,8 @@
 import type { BeautifulGraphSettings, PanelState } from "./types";
+import { fallbackColorMode, paletteFallbackColor } from "./groups.ts";
 
 export const NEW_DEFAULT_PRESET="Make this the new defaults";
+export const REVISION_19_DEFAULT_PRESET="this preset to be new defaults";
 
 export function migrateNamedDefaults(settings:BeautifulGraphSettings,fromVersion:number):{forces:boolean;display:boolean} {
   const result={forces:false,display:false};
@@ -10,6 +12,23 @@ export function migrateNamedDefaults(settings:BeautifulGraphSettings,fromVersion
   const display=settings.displayPresets?.[NEW_DEFAULT_PRESET];
   if(display){settings.display=structuredClone(display);delete settings.displayPresets[NEW_DEFAULT_PRESET];result.display=true}
   return result;
+}
+
+const finite=(value:unknown,fallback:number,min:number,max:number):number=>typeof value==="number"&&Number.isFinite(value)?Math.max(min,Math.min(max,value)):fallback;
+export function migrateRevision19Settings(settings:BeautifulGraphSettings,fromVersion:number):boolean {
+  if(fromVersion>=15)return false;
+  const forces=settings.forcePresets?.[REVISION_19_DEFAULT_PRESET];
+  const display=settings.displayPresets?.[REVISION_19_DEFAULT_PRESET];
+  if(forces)settings.forces=structuredClone(forces);
+  if(display)settings.display=structuredClone(display);
+  const normalizeForce=(force:BeautifulGraphSettings["forces"]|undefined):void=>{if(!force)return;const legacy=force.siblingLinkForce as unknown;force.siblingLinkForce=legacy===false?0:legacy===true?1:finite(legacy,1,0,2);force.center=finite(force.center,1.2358954399999997,0,12);force.repel=finite(force.repel,1,0,3);force.link=finite(force.link,.041472,0,.6);force.distance=finite(force.distance,362.874,10,1500);force.curvature=finite(force.curvature,0,-2,2);force.stretchiness=finite(force.stretchiness,.08224000000000006,-1,1)};
+  normalizeForce(settings.forces);for(const preset of Object.values(settings.forcePresets??{}))normalizeForce(preset);
+  const d=settings.display;d.textFade=finite(d.textFade,24.748992,2,80);d.nodeSize=finite(d.nodeSize,2.8660740000000002,.2,8);d.linkThickness=finite(d.linkThickness,1.2583300000000004,.1,6);d.glow=finite(d.glow,.679144,0,2);d.glowSize=finite(d.glowSize,1.3,0,4);d.lensOpacity=finite(d.lensOpacity,.26,.04,.8);d.lensRadius=finite(d.lensRadius,1.74,.5,5);d.iconMode=["color","black","white"].includes(d.iconMode)?d.iconMode:"color";
+  for(const preset of Object.values(settings.displayPresets??{})){preset.iconMode=["color","black","white"].includes(preset.iconMode)?preset.iconMode:"color"}
+  settings.other.colorMode=settings.other.colorMode??fallbackColorMode(settings.other.color);
+  if(settings.other.colorMode==="palette")settings.other.color=paletteFallbackColor(settings.groups,settings.groupPalette);
+  for(const preset of Object.values(settings.groupPresets??{})){preset.other.colorMode=preset.other.colorMode??fallbackColorMode(preset.other.color);if(preset.other.colorMode==="palette")preset.other.color=paletteFallbackColor(preset.groups,preset.paletteId)}
+  return true;
 }
 
 export function migrateRevision15Glow(display:{glow:number},fromVersion:number):boolean {
