@@ -1,12 +1,13 @@
 import type { GraphDisplay, GraphForces } from "./types";
 
 export const DEFAULT_FORCES: GraphForces = {
-  center: 1.2358954399999997,
-  repel: 1,
-  link: 0.041472,
-  distance: 362.874,
+  center: 1.48,
+  repel: 2.28,
+  link: 0.034,
+  distance: 51,
   curvature: 0,
-  siblingLinkForce: 1,
+  siblingLinkForce: 15,
+  rootLinkForce: 1,
 };
 
 export const DEFAULT_DISPLAY: GraphDisplay = {

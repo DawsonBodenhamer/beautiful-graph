@@ -1,6 +1,8 @@
 import type { GraphPoint } from "./types";
 
 export interface PositionedPath { path:string; x:number; y:number }
+export interface RankedPositionedPath extends PositionedPath { radius:number; degree:number }
+export interface FamilyPath { path:string; family:string }
 
 export function activeSavedPoints(positions:Record<string,GraphPoint>,paths:Iterable<string>):GraphPoint[] {
   const result:GraphPoint[]=[];
@@ -19,6 +21,24 @@ export function positionSnapshot(nodes:Iterable<PositionedPath>):Record<string,G
   const snapshot:Record<string,GraphPoint>={};
   for(const node of nodes)if(Number.isFinite(node.x)&&Number.isFinite(node.y))snapshot[node.path]={x:node.x,y:node.y};
   return snapshot;
+}
+
+export function rankedPositionSnapshot(nodes:Iterable<RankedPositionedPath>,limit:number):Record<string,GraphPoint> {
+  const count=Math.max(0,Math.floor(Number.isFinite(limit)?limit:0));
+  return positionSnapshot([...nodes]
+    .filter(node=>Number.isFinite(node.x)&&Number.isFinite(node.y))
+    .sort((a,b)=>b.radius-a.radius||b.degree-a.degree||a.path.localeCompare(b.path))
+    .slice(0,count));
+}
+
+export function savedFamilyAnchors(nodes:Iterable<FamilyPath>,positions:Record<string,GraphPoint>):Map<string,GraphPoint> {
+  const totals=new Map<string,{x:number;y:number;count:number}>();for(const node of nodes){const point=positions[node.path];if(!point)continue;const total=totals.get(node.family)??{x:0,y:0,count:0};total.x+=point.x;total.y+=point.y;total.count++;totals.set(node.family,total)}
+  return new Map([...totals].map(([family,total])=>[family,{x:total.x/total.count,y:total.y/total.count}]));
+}
+
+export function familySeedPosition(path:string,index:number,family:string,anchors:ReadonlyMap<string,GraphPoint>,fallback:GraphPoint):GraphPoint {
+  const anchor=anchors.get(family)??fallback,seed=[...path].reduce((value,char)=>Math.imul(value^char.charCodeAt(0),16777619),2166136261)>>>0,angle=seed/4294967296*Math.PI*2,spread=24+Math.sqrt(index+1)*1.8;
+  return{x:anchor.x+Math.cos(angle)*spread,y:anchor.y+Math.sin(angle)*spread};
 }
 
 export function prunePositionSnapshot(positions:Record<string,GraphPoint>,paths:Iterable<string>):Record<string,GraphPoint> {

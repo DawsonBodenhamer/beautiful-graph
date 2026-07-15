@@ -39,6 +39,14 @@ export function migrateRevision20Settings(settings:BeautifulGraphSettings,fromVe
   return true;
 }
 
+export function migrateRevision25Settings(settings:BeautifulGraphSettings,fromVersion:number):boolean {
+  if(fromVersion>=20)return false;
+  const normalize=(force:BeautifulGraphSettings["forces"]|undefined)=>{if(force&&(force.rootLinkForce===undefined||!Number.isFinite(force.rootLinkForce)))force.rootLinkForce=1};
+  normalize(settings.forces);for(const preset of Object.values(settings.forcePresets??{}))normalize(preset);
+  settings.savedNodeCount=Math.max(0,Math.min(5000,Math.round(Number.isFinite(settings.savedNodeCount)?settings.savedNodeCount:100)));
+  return true;
+}
+
 export function migrateRevision15Glow(display:{glow:number},fromVersion:number):boolean {
   if(fromVersion>=12||Math.abs(display.glow-.59056)>.000001)return false;
   display.glow=.679144;

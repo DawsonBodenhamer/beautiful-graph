@@ -3,7 +3,7 @@ import type { BeautifulGraphSettings, GraphEdge, GraphModel, GraphNode, GraphPoi
 import { effectiveGroup, nodeAllowed } from "./groups";
 import { applyDerivedNodePresentation } from "./node-presentation";
 import { deriveGraphRelationships } from "./graph-relationships";
-import { savedLayoutStats } from "./layout-persistence";
+import { familySeedPosition, savedFamilyAnchors, savedLayoutStats } from "./layout-persistence";
 
 const CATEGORY = {
   Wiki: ["#44D7B6", "📜"], Raw: ["#FF8A4C", "🧺"], Development: ["#9B87F5", "🛠️"],
@@ -28,8 +28,8 @@ function title(file: TFile, replace: boolean, capitalize: boolean): string {
 export function buildGraphModel(app: App, settings: BeautifulGraphSettings, positions: Record<string, GraphPoint>): GraphModel {
   const files = app.vault.getMarkdownFiles();
   const paths = new Set(files.map((file) => file.path));
-  const {span:savedSpan,center:savedCenter}=savedLayoutStats(positions,paths);
-  const useSavedLayout = savedSpan >= 50 && savedSpan <= 50_000;
+  const {points:savedPoints,span:savedSpan,center:savedCenter}=savedLayoutStats(positions,paths);
+  const useSavedLayout = savedPoints.length>0 && savedSpan <= 50_000;
   // Preserve the user's settled scale exactly. Camera fitting handles large valid layouts.
   const savedScale = 1;
   const directedLinks:{source:string;target:string}[]=[];
@@ -64,6 +64,13 @@ export function buildGraphModel(app: App, settings: BeautifulGraphSettings, posi
     };
   });
   applyDerivedNodePresentation(nodes,edges,settings);
+  if(useSavedLayout){
+    const familyAnchors=savedFamilyAnchors(nodes,positions);
+    for(const [index,node] of nodes.entries()){
+      if(positions[node.path])continue;
+      const seed=familySeedPosition(node.path,index,node.family,familyAnchors,savedCenter);node.x=seed.x;node.y=seed.y;
+    }
+  }
   return { nodes, edges };
 }
 
