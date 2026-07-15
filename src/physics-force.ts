@@ -18,15 +18,3 @@ export function linkSpringImpulse(source:LinkPoint,target:LinkPoint,restLength:n
   const magnitude=Math.max(-8,Math.min(8,(distance-restLength)*.8*strength*multiplier*alpha)),nx=dx/distance,ny=dy/distance,sourceDegree=Math.max(1,source.degree??1),targetDegree=Math.max(1,target.degree??1),sum=sourceDegree+targetDegree,sourceWeight=targetDegree/sum,targetWeight=sourceDegree/sum;
   return{source:{x:nx*magnitude*sourceWeight,y:ny*magnitude*sourceWeight},target:{x:-nx*magnitude*targetWeight,y:-ny*magnitude*targetWeight},distance,magnitude};
 }
-
-export function normalizedForceResidual(energy:number,alpha:number):number {
-  if(!Number.isFinite(energy)||energy<0)return Number.POSITIVE_INFINITY;
-  return energy/Math.max(1e-6,alpha*alpha);
-}
-
-export function convergenceDecision(overlap:number,energy:number,alpha:number,thorough:boolean,cycle:number,maxCycles:number):{state:"settled"|"reheat"|"incomplete";residual:number} {
-  // Keep this function self-contained. Its source is serialized into the
-  // production worker, where bundler-renamed free identifiers do not exist.
-  const residual=!Number.isFinite(energy)||energy<0?Number.POSITIVE_INFINITY:energy/Math.max(1e-6,alpha*alpha),accepted=overlap<=.25&&(!thorough||residual<=.35);
-  return{state:accepted?"settled":cycle<maxCycles?"reheat":"incomplete",residual};
-}

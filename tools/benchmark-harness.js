@@ -138,12 +138,14 @@
       await sleep(RUN_MS);
     },
     async motion(view, duration) {
-      view.updateForces(true);
-      const end = performance.now() + duration;
-      while (performance.now() < end) {
-        view.updateForces(true);
-        await sleep(1000);
+      const end=performance.now()+duration,firstTicks=[],completions=[],tickGaps=[],substeps=[];
+      while(performance.now()<end){
+        const worker=view.worker;if(!worker)throw new Error("Tune benchmark requires an active physics worker.");const started=performance.now();let firstTick,lastTick;
+        await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>{worker.removeEventListener("message",onMessage);reject(new Error("Tune burst exceeded 1.5 seconds."))},1500),onMessage=event=>{const type=event.data?.type,now=performance.now();if(type==="tick"){if(firstTick===undefined){firstTick=now;firstTicks.push(now-started)}if(lastTick!==undefined)tickGaps.push(now-lastTick);lastTick=now}else if(type==="burstComplete"){clearTimeout(timeout);worker.removeEventListener("message",onMessage);completions.push(now-started);substeps.push(event.data?.substeps??0);resolve()}};worker.addEventListener("message",onMessage);view.runTuneBurst()});
+        await sleep(100);
       }
+      const firstTickMaxMs=round(Math.max(...firstTicks)),completionMaxMs=round(Math.max(...completions)),tickGapMaxMs=round(Math.max(0,...tickGaps)),substepsMax=Math.max(...substeps);
+      return{burstCount:completions.length,firstTickMaxMs,completionMaxMs,tickGapMaxMs,substepsMax,tuneTargetsPassed:firstTickMaxMs<=100&&completionMaxMs<=1500&&substepsMax<=96&&tickGapMaxMs<7000};
     },
     async camera(view, duration) {
       const initial = { scale: view.scale, offset: { ...view.offset } };

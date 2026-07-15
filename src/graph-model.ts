@@ -3,6 +3,7 @@ import type { BeautifulGraphSettings, GraphEdge, GraphModel, GraphNode, GraphPoi
 import { effectiveGroup, nodeAllowed } from "./groups";
 import { applyDerivedNodePresentation } from "./node-presentation";
 import { deriveGraphRelationships } from "./graph-relationships";
+import { savedLayoutStats } from "./layout-persistence";
 
 const CATEGORY = {
   Wiki: ["#44D7B6", "📜"], Raw: ["#FF8A4C", "🧺"], Development: ["#9B87F5", "🛠️"],
@@ -26,16 +27,11 @@ function title(file: TFile, replace: boolean, capitalize: boolean): string {
 
 export function buildGraphModel(app: App, settings: BeautifulGraphSettings, positions: Record<string, GraphPoint>): GraphModel {
   const files = app.vault.getMarkdownFiles();
-  const savedPoints = Object.values(positions).filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
-  const savedSpan = savedPoints.length > 1 ? Math.max(
-    Math.max(...savedPoints.map((p) => p.x)) - Math.min(...savedPoints.map((p) => p.x)),
-    Math.max(...savedPoints.map((p) => p.y)) - Math.min(...savedPoints.map((p) => p.y)),
-  ) : 0;
+  const paths = new Set(files.map((file) => file.path));
+  const {span:savedSpan,center:savedCenter}=savedLayoutStats(positions,paths);
   const useSavedLayout = savedSpan >= 50 && savedSpan <= 50_000;
-  const savedCenter = savedPoints.length ? { x: savedPoints.reduce((s,p)=>s+p.x,0)/savedPoints.length, y: savedPoints.reduce((s,p)=>s+p.y,0)/savedPoints.length } : {x:0,y:0};
   // Preserve the user's settled scale exactly. Camera fitting handles large valid layouts.
   const savedScale = 1;
-  const paths = new Set(files.map((file) => file.path));
   const directedLinks:{source:string;target:string}[]=[];
   const degree = new Map<string, number>();
   for (const source of files) {
@@ -52,9 +48,7 @@ export function buildGraphModel(app: App, settings: BeautifulGraphSettings, posi
     const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
     const d = degree.get(file.path) ?? 0;
     const group=effectiveGroup(file.path,settings.groups),hub=d>=12;
-    // Hubs provide a remembered skeleton. Ordinary notes re-form around it on every new view.
     const savedSeed = useSavedLayout ? positions[file.path] : undefined;
-    const saved = savedSeed && (hub || d >= 12) ? savedSeed : undefined;
     const seed = [...file.path].reduce((value, char) => Math.imul(value ^ char.charCodeAt(0), 16777619), 2166136261) >>> 0;
     const angle = (seed / 4294967296) * Math.PI * 2;
     const spread = 80 + Math.sqrt(index + 1) * 4.5;
@@ -65,8 +59,8 @@ export function buildGraphModel(app: App, settings: BeautifulGraphSettings, posi
       category, color: group?.color??settings.other.color, icon:String(frontmatter?.graph_icon ?? group?.icon ?? settings.other.icon ?? icon), degree: d,
       baseRadius:radius, radius, description: String(frontmatter?.description ?? ""), visible: nodeAllowed(file.path,settings.groups,settings.other.visible), hub,
       alwaysLabel:false,rootIndexStyled:false,
-      x: saved ? (saved.x-savedCenter.x)*savedScale : savedSeed ? (savedSeed.x-savedCenter.x)*savedScale+Math.cos(angle)*18 : Math.cos(angle)*spread,
-      y: saved ? (saved.y-savedCenter.y)*savedScale : savedSeed ? (savedSeed.y-savedCenter.y)*savedScale+Math.sin(angle)*18 : Math.sin(angle)*spread,
+      x: savedSeed ? savedSeed.x*savedScale : savedCenter.x+Math.cos(angle)*spread,
+      y: savedSeed ? savedSeed.y*savedScale : savedCenter.y+Math.sin(angle)*spread,
     };
   });
   applyDerivedNodePresentation(nodes,edges,settings);

@@ -21,3 +21,8 @@ test("repel remains an independent pairwise spacing control",()=>{
   assert.equal(high/low,5);
   assert.equal(repelFactor(100,2,.5,1),high*2);
 });
+
+test("far-field repulsion decays smoothly without a hard boundary",()=>{
+  const radius=1000,near=repelFactor(radius*radius*.25,1,1,1,radius),atRadius=repelFactor(radius*radius,1,1,1,radius),far=repelFactor(radius*radius*4,1,1,1,radius),justInside=repelFactor(radius*radius*.999,1,1,1,radius),justOutside=repelFactor(radius*radius*1.001,1,1,1,radius);
+  assert.ok(near>atRadius&&atRadius>far);assert.ok(Math.abs(justInside-justOutside)/atRadius<.01);assert.ok(far>0);
+});
