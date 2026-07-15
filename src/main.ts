@@ -4,7 +4,7 @@ import { BeautifulGraphSettingTab } from "./settings";
 import type { BeautifulGraphData, BeautifulGraphSettings } from "./types";
 import { DEFAULT_DISPLAY, DEFAULT_FORCES } from "./defaults";
 import { defaultGroupIcon, GROUP_PALETTE, ROOT_INDEX_COLOR } from "./groups";
-import { migrateAdaptivePanelDefaults, migrateNamedDefaults, migrateResponsivePanels, migrateRevision10Panels, migrateRevision15Glow, migrateRevision19Settings } from "./settings-migration";
+import { migrateAdaptivePanelDefaults, migrateNamedDefaults, migrateResponsivePanels, migrateRevision10Panels, migrateRevision15Glow, migrateRevision19Settings, migrateRevision20Settings } from "./settings-migration";
 import { SettingsHistory } from "./settings-history";
 import { SnapshotWriteQueue } from "./snapshot-write-queue";
 
@@ -12,7 +12,7 @@ const DEFAULTS: BeautifulGraphSettings = { replaceUnderscores:true,capitalizeDir
 
 export default class BeautifulGraphPlugin extends Plugin {
   settings: BeautifulGraphSettings = structuredClone(DEFAULTS);
-  data: BeautifulGraphData = {version:16,settings:this.settings,positions:{}};
+  data: BeautifulGraphData = {version:17,settings:this.settings,positions:{}};
   needsLayoutConvergence=false;
   private lastGraph?: BeautifulGraphView;
   private graphViews=new Set<BeautifulGraphView>();
@@ -24,7 +24,7 @@ export default class BeautifulGraphPlugin extends Plugin {
   async onload():Promise<void>{
     await this.resetDiagnostics();
     const old=await this.loadData() as Partial<BeautifulGraphData>&{settings?:Partial<BeautifulGraphSettings>};
-    this.needsLayoutConvergence=(old?.version??0)<16;
+    this.needsLayoutConvergence=(old?.version??0)<17;
     const oldDisplay=old?.settings?.display as Partial<BeautifulGraphSettings["display"]>&{hideSearchSatellites?:boolean}|undefined;
     this.settings={...structuredClone(DEFAULTS),...old?.settings,forces:{...DEFAULTS.forces,...old?.settings?.forces},display:{...DEFAULTS.display,...oldDisplay,showLinkedInSearch:oldDisplay?.showLinkedInSearch??(oldDisplay?.hideSearchSatellites===undefined?false:!oldDisplay.hideSearchSatellites)},panels:{...DEFAULTS.panels,...old?.settings?.panels}};
     const legacy=old?.settings as (Partial<BeautifulGraphSettings>&{otherVisible?:boolean;groupPalette?:string})|undefined;
@@ -44,9 +44,10 @@ export default class BeautifulGraphPlugin extends Plugin {
     migrateRevision15Glow(this.settings.display,old?.version??0);
     const namedDefaultMigration=migrateNamedDefaults(this.settings,old?.version??0);
     const revision19Migration=migrateRevision19Settings(this.settings,old?.version??0);
+    const revision20Migration=migrateRevision20Settings(this.settings,old?.version??0);
     this.settingsHistory.setLimit(this.settings.historyLimit);
-    this.data={version:16,settings:this.settings,positions:(old?.version??0)>=3?(old?.positions??{}):{}};
-    if((old?.version??0)!==16||namedDefaultMigration.forces||namedDefaultMigration.display||revision19Migration)await this.persistData();
+    this.data={version:17,settings:this.settings,positions:(old?.version??0)>=3?(old?.positions??{}):{}};
+    if((old?.version??0)!==17||namedDefaultMigration.forces||namedDefaultMigration.display||revision19Migration||revision20Migration)await this.persistData();
     this.registerView(BEAUTIFUL_GRAPH_VIEW,(leaf)=>new BeautifulGraphView(leaf,this));
     this.addCommand({id:"open-beautiful-graph",name:"Open Beautiful Graph",callback:()=>void this.openGraph()});
     this.addRibbonIcon("orbit","Open Beautiful Graph",()=>void this.openGraph());

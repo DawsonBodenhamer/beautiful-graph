@@ -21,13 +21,21 @@ export function migrateRevision19Settings(settings:BeautifulGraphSettings,fromVe
   const display=settings.displayPresets?.[REVISION_19_DEFAULT_PRESET];
   if(forces)settings.forces=structuredClone(forces);
   if(display)settings.display=structuredClone(display);
-  const normalizeForce=(force:BeautifulGraphSettings["forces"]|undefined):void=>{if(!force)return;const legacy=force.siblingLinkForce as unknown;force.siblingLinkForce=legacy===false?0:legacy===true?1:finite(legacy,1,0,2);force.center=finite(force.center,1.2358954399999997,0,12);force.repel=finite(force.repel,1,0,3);force.link=finite(force.link,.041472,0,.6);force.distance=finite(force.distance,362.874,10,1500);force.curvature=finite(force.curvature,0,-2,2);force.stretchiness=finite(force.stretchiness,.08224000000000006,-1,1)};
+  const normalizeForce=(force:BeautifulGraphSettings["forces"]|undefined):void=>{if(!force)return;const legacy=force.siblingLinkForce as unknown;force.siblingLinkForce=legacy===false?0:legacy===true?1:finite(legacy,1,0,2);force.center=finite(force.center,1.2358954399999997,0,12);force.repel=finite(force.repel,1,0,3);force.link=finite(force.link,.041472,0,.6);force.distance=finite(force.distance,362.874,10,1500);force.curvature=finite(force.curvature,0,-2,2)};
   normalizeForce(settings.forces);for(const preset of Object.values(settings.forcePresets??{}))normalizeForce(preset);
-  const d=settings.display;d.textFade=finite(d.textFade,24.748992,2,80);d.nodeSize=finite(d.nodeSize,2.8660740000000002,.2,8);d.linkThickness=finite(d.linkThickness,1.2583300000000004,.1,6);d.glow=finite(d.glow,.679144,0,2);d.glowSize=finite(d.glowSize,1.3,0,4);d.lensOpacity=finite(d.lensOpacity,.26,.04,.8);d.lensRadius=finite(d.lensRadius,1.74,.5,5);d.iconMode=["color","black","white"].includes(d.iconMode)?d.iconMode:"color";
-  for(const preset of Object.values(settings.displayPresets??{})){preset.iconMode=["color","black","white"].includes(preset.iconMode)?preset.iconMode:"color"}
+  const d=settings.display;d.textFade=finite(d.textFade,24.748992,2,80);d.nodeSize=finite(d.nodeSize,2.8660740000000002,.2,8);d.linkThickness=finite(d.linkThickness,1.2583300000000004,.1,6);d.glow=finite(d.glow,.679144,0,2);d.glowSize=finite(d.glowSize,1.3,0,4);d.lensOpacity=finite(d.lensOpacity,.26,.04,.8);d.lensRadius=finite(d.lensRadius,1.74,.5,5);
   settings.other.colorMode=settings.other.colorMode??fallbackColorMode(settings.other.color);
   if(settings.other.colorMode==="palette")settings.other.color=paletteFallbackColor(settings.groups,settings.groupPalette);
   for(const preset of Object.values(settings.groupPresets??{})){preset.other.colorMode=preset.other.colorMode??fallbackColorMode(preset.other.color);if(preset.other.colorMode==="palette")preset.other.color=paletteFallbackColor(preset.groups,preset.paletteId)}
+  return true;
+}
+
+export function migrateRevision20Settings(settings:BeautifulGraphSettings,fromVersion:number):boolean {
+  if(fromVersion>=17)return false;
+  const stripForce=(force:BeautifulGraphSettings["forces"]|undefined)=>{if(force)delete (force as unknown as {stretchiness?:unknown}).stretchiness};
+  const stripDisplay=(display:BeautifulGraphSettings["display"]|undefined)=>{if(display)delete (display as unknown as {iconMode?:unknown}).iconMode};
+  stripForce(settings.forces);for(const preset of Object.values(settings.forcePresets??{}))stripForce(preset);
+  stripDisplay(settings.display);for(const preset of Object.values(settings.displayPresets??{}))stripDisplay(preset);
   return true;
 }
 

@@ -1,6 +1,5 @@
-export interface GraphForces { center: number; repel: number; link: number; distance: number; curvature: number; stretchiness: number; siblingLinkForce: number }
-export type IconMode="color"|"black"|"white";
-export interface GraphDisplay { arrows: boolean; textFade: number; nodeSize: number; linkThickness: number; glow: number; glowSize: number; showSiblingLinks: boolean; showLinkedInSearch: boolean; lensOpacity: number; lensRadius: number; recenterOnFocus:boolean; iconMode:IconMode }
+export interface GraphForces { center: number; repel: number; link: number; distance: number; curvature: number; siblingLinkForce: number }
+export interface GraphDisplay { arrows: boolean; textFade: number; nodeSize: number; linkThickness: number; glow: number; glowSize: number; showSiblingLinks: boolean; showLinkedInSearch: boolean; lensOpacity: number; lensRadius: number; recenterOnFocus:boolean }
 export interface PanelPixelGeometry { x?:number; y?:number; width?:number; height?:number }
 /** Panel geometry is stored as a 0..1 fraction of the graph leaf. */
 export interface PanelState { visible:boolean; collapsed:boolean; pinned?:boolean; autoHeight?:boolean; x?:number; y?:number; width?:number; height?:number; z?:number; legacyPixels?:PanelPixelGeometry }

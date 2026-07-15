@@ -12,7 +12,6 @@ test("every force default maps to the slider midpoint",()=>{
     [DEFAULT_FORCES.link,0,DEFAULT_FORCES.link,.6],
     [DEFAULT_FORCES.distance,10,DEFAULT_FORCES.distance,1500],
     [DEFAULT_FORCES.curvature,-2,DEFAULT_FORCES.curvature,2],
-    [DEFAULT_FORCES.stretchiness,-1,DEFAULT_FORCES.stretchiness,1],
     [DEFAULT_FORCES.siblingLinkForce,0,DEFAULT_FORCES.siblingLinkForce,2],
   ])close(mappedPositionFromValue(value,min,mid,max),50);
 });

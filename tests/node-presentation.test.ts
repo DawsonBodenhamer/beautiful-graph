@@ -30,6 +30,8 @@ test("derived hierarchy is global and idempotent",()=>{
   assert.equal(nodes[2]!.baseRadius,20);
 });
 
+test("ordinary procedural radii remain unchanged",()=>{const nodes=[node("index.md",4),node("wiki/index.md",6),node("wiki/a.md",20),node("wiki/b.md",8)];applyDerivedNodePresentation(nodes,edges,settings);assert.equal(nodes[2]!.radius,nodes[2]!.baseRadius);assert.equal(nodes[3]!.radius,nodes[3]!.baseRadius)});
+
 test("root styling only includes direct links when enabled",()=>{
   const nodes=[node("index.md",4),node("wiki/a.md",5)];
   applyDerivedNodePresentation(nodes,edges,settings);

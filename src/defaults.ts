@@ -6,7 +6,6 @@ export const DEFAULT_FORCES: GraphForces = {
   link: 0.041472,
   distance: 362.874,
   curvature: 0,
-  stretchiness: 0.08224000000000006,
   siblingLinkForce: 1,
 };
 
@@ -22,5 +21,4 @@ export const DEFAULT_DISPLAY: GraphDisplay = {
   lensOpacity: 0.26,
   lensRadius: 1.74,
   recenterOnFocus: false,
-  iconMode:"color",
 };
