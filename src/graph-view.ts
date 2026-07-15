@@ -16,6 +16,7 @@ import { captureResponsiveCamera, fitCamera, restoreResponsiveCamera, type Camer
 import { acceptsHoverWhileDragging, beginDrag, dragPointerDisposition, dragReleaseAction, moveDrag, shouldClearHoverOnPointerOut, suppressesPostDragTap, type DragState } from "./drag-state";
 import { tetherEndpoints } from "./tether-geometry";
 import { mappedPositionFromValue, valueFromMappedPosition } from "./slider-mapping";
+import { WorkerRunWatchdog, workerFailureRecovery } from "./worker-run-watchdog";
 
 export const BEAUTIFUL_GRAPH_VIEW = "beautiful-graph";
 type NodeView = { node: GraphNode; body: Graphics; surface: Sprite; glow: Sprite; icon?:Text; iconRes?: number; label?: Text; labelBg?: Graphics; leader?:Graphics; styleKey?: string };
@@ -106,6 +107,8 @@ export class BeautifulGraphView extends ItemView {
   private nodeScaleGeneration=0;
   private pendingNodeScaleFinal=false;
   private forceAnalysisRunning=false;
+  private thoroughWatchdog=new WorkerRunWatchdog<Worker>();
+  private thoroughFallbackPositions?:Map<string,{x:number;y:number}>;
 
   constructor(leaf: WorkspaceLeaf, private plugin: BeautifulGraphPlugin) { super(leaf); }
   getViewType(): string { return BEAUTIFUL_GRAPH_VIEW; }
@@ -154,7 +157,7 @@ export class BeautifulGraphView extends ItemView {
     syncTicker();
   }
 
-  async onClose(): Promise<void> { this.plugin.unregisterGraph(this);this.panelResizeObserver?.disconnect();if(this.startupTimer)window.clearTimeout(this.startupTimer);if(this.nodeScaleFrame)cancelAnimationFrame(this.nodeScaleFrame);if(this.modelRefreshTimer)window.clearTimeout(this.modelRefreshTimer);if(this.searchTimer)window.clearTimeout(this.searchTimer);for(const timer of this.folderTapTimers.values())window.clearTimeout(timer);this.cancelHoverIntent();this.savePositions(); this.worker?.terminate(); this.pixi?.destroy(true);for(const texture of this.nodeTextures.values())texture.destroy(true);this.nodeTextures.clear(); }
+  async onClose(): Promise<void> { this.plugin.unregisterGraph(this);this.panelResizeObserver?.disconnect();this.thoroughWatchdog.clear();this.thoroughFallbackPositions=undefined;if(this.startupTimer)window.clearTimeout(this.startupTimer);if(this.nodeScaleFrame)cancelAnimationFrame(this.nodeScaleFrame);if(this.modelRefreshTimer)window.clearTimeout(this.modelRefreshTimer);if(this.searchTimer)window.clearTimeout(this.searchTimer);for(const timer of this.folderTapTimers.values())window.clearTimeout(timer);this.cancelHoverIntent();this.savePositions(); this.worker?.terminate(); this.pixi?.destroy(true);for(const texture of this.nodeTextures.values())texture.destroy(true);this.nodeTextures.clear(); }
 
   rebuild(rebuildModel = true, fitInitial = true,initialOpen=false): void {
     this.cancelHoverIntent();this.focusAnimation++;this.focusProgress=0;this.focusTarget=0;this.focusPinned=false;this.hovered=undefined;this.hideTooltip();this.scene.filters=[];
@@ -176,6 +179,15 @@ export class BeautifulGraphView extends ItemView {
   private previewInitialLayout():void{if(!this.startupPending)return;for(const node of this.model.nodes){const target=this.physicsTargets.get(node.id);if(target){node.x=target.x;node.y=target.y}}for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld])layer.alpha=1;this.fit(false);this.renderGraph()}
   private applyPhysicsTargets():void {for(const node of this.model.nodes){const target=this.physicsTargets.get(node.id);if(target){node.x=target.x;node.y=target.y}}this.physicsTargets.clear();this.motionUntil=0}
   private finishForceAnalysis(accepted:boolean):void {if(!this.forceAnalysisRunning)return;this.forceAnalysisRunning=false;new Notice(accepted?"Force analysis converged and was saved.":"Force analysis stopped before residual convergence. The layout remains pending for another automatic pass.");this.createPanels()}
+  private armThoroughWatchdog(worker:Worker,generation:number):void {this.thoroughFallbackPositions=new Map(this.model.nodes.map(node=>[node.id,{x:node.x,y:node.y}]));this.thoroughWatchdog.arm(worker,generation,()=>this.failPhysicsWorker(worker,generation,"Physics analysis timed out after 60 seconds."))}
+  private failPhysicsWorker(worker:Worker,generation:number,reason:string):void {
+    if(this.worker!==worker||this.workerGeneration!==generation)return;
+    const recovery=workerFailureRecovery(this.startupPending),fallback=this.thoroughFallbackPositions;
+    this.thoroughWatchdog.clear(worker,generation);this.thoroughFallbackPositions=undefined;worker.terminate();this.worker=undefined;this.workerNodeIds.clear();this.workerNodeOrder=[];this.physicsTargets.clear();this.motionUntil=0;
+    if(fallback)for(const node of this.model.nodes){const position=fallback.get(node.id);if(position){node.x=position.x;node.y=position.y}}
+    if(recovery.revealStartup){this.startupPending=false;if(this.startupTimer)window.clearTimeout(this.startupTimer);this.startupTimer=undefined;for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld])layer.alpha=1;this.fit(false)}
+    this.forceAnalysisRunning=false;this.createPanels();this.renderGraph();new Notice(`${reason} Layout convergence remains pending; Analyze & Tune can be retried.`);
+  }
   private finishInitialLayout(accepted:boolean):void {
     if(!this.startupPending)return;this.startupPending=false;if(this.startupTimer)window.clearTimeout(this.startupTimer);this.startupTimer=undefined;
     this.applyPhysicsTargets();this.fit(false);for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld])layer.alpha=1;if(accepted)this.plugin.markLayoutConverged();this.savePositions();this.finishForceAnalysis(accepted);this.renderGraph();
@@ -186,21 +198,23 @@ export class BeautifulGraphView extends ItemView {
   private startActiveWorker(force=false,initial:{heat?:number;thorough?:boolean}={}):void {
     this.physicsFrozen=false;
     const active=this.model.nodes.filter(node=>node.visible),ids=activeNodeIds(this.model.nodes);if(!force&&this.worker&&sameNodeIds(ids,this.workerNodeIds))return;this.workerNodeIds=ids;
-    this.worker?.terminate();this.physicsTargets.clear();const generation=++this.workerGeneration;this.workerNodeOrder=active.map(node=>node.id);
-    this.worker = createPhysicsWorker();
-    this.worker.onmessage = (event) => {
+    this.thoroughWatchdog.clear();this.thoroughFallbackPositions=undefined;this.worker?.terminate();this.physicsTargets.clear();const generation=++this.workerGeneration;this.workerNodeOrder=active.map(node=>node.id);const thorough=initial.thorough!==false;
+    const worker=createPhysicsWorker();this.worker = worker;
+    worker.onmessage = (event) => {
       if(event.data.generation!==this.workerGeneration||!event.data.coords||this.physicsFrozen)return;const type=event.data.type as string;if(!["tick","settled","preview","projection","incomplete","analysisRunning"].includes(type)||type==="projection"&&(event.data.scaleGeneration??0)<this.nodeScaleGeneration)return;const coords=event.data.coords as Float32Array;
       for(let index=0;index<this.workerNodeOrder.length;index++){const id=this.workerNodeOrder[index],x=coords[index*2],y=coords[index*2+1];if(id===undefined||x===undefined||y===undefined)continue;if(type==="projection"){const node=this.views.get(id)?.node;if(node){node.x=x;node.y=y}this.physicsTargets.delete(id)}else this.physicsTargets.set(id,{x,y})}this.motionUntil=type==="projection"?0:performance.now()+180;if(this.activeLenses.size)this.lensGeometryDirty=true;
       if(event.data.type==="tick")this.physicsTicks++;
-      if((type==="settled"||type==="incomplete")&&event.data.thorough){const accepted=type==="settled";if(this.startupPending)this.finishInitialLayout(accepted);else this.finishThoroughConvergence(accepted);return}
+      if((type==="settled"||type==="incomplete")&&event.data.thorough){this.thoroughWatchdog.clear(worker,generation);this.thoroughFallbackPositions=undefined;const accepted=type==="settled";if(this.startupPending)this.finishInitialLayout(accepted);else this.finishThoroughConvergence(accepted);return}
       this.queueRender();
     };
+    worker.onerror=(event)=>this.failPhysicsWorker(worker,generation,`Physics worker failed: ${event.message||"unknown worker error"}`);
+    worker.onmessageerror=()=>this.failPhysicsWorker(worker,generation,"Physics worker returned an unreadable message.");
     const edges=this.model.edges.filter(edge=>ids.has(edge.source)&&ids.has(edge.target));
-    this.worker.postMessage({ type: "init",generation, nodes: active.map(({id,x,y,visible,folder,degree,radius,family}) => ({id,x,y,visible,folder,degree,radius,family:this.search?"__search":family})), edges, opts: this.plugin.settings.forces, nodeScale:this.plugin.settings.display.nodeSize,heat:initial.heat,thorough:initial.thorough });
-    if(this.searchRoles.size)this.worker.postMessage({type:"searchRoles",roles:[...this.searchRoles]});
+    worker.postMessage({ type: "init",generation, nodes: active.map(({id,x,y,visible,folder,degree,radius,family}) => ({id,x,y,visible,folder,degree,radius,family:this.search?"__search":family})), edges, opts: this.plugin.settings.forces, nodeScale:this.plugin.settings.display.nodeSize,heat:initial.heat,thorough:initial.thorough });
+    if(this.searchRoles.size)worker.postMessage({type:"searchRoles",roles:[...this.searchRoles]});if(thorough)this.armThoroughWatchdog(worker,generation);
   }
 
-  updateForces(thorough=false): void { this.physicsFrozen=false;this.worker?.postMessage({ type: "forces", opts: this.plugin.settings.forces, thorough }); }
+  updateForces(thorough=false): void { this.physicsFrozen=false;if(!this.worker){this.startActiveWorker(true,{heat:1,thorough});return}const worker=this.worker,generation=this.workerGeneration;worker.postMessage({ type: "forces", opts: this.plugin.settings.forces, thorough });if(thorough)this.armThoroughWatchdog(worker,generation); }
 
   private buildScene(): void {
     this.links.clear();

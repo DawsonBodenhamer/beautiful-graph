@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { buildSync } from "esbuild";
 import { createPhysicsWorkerSource } from "../src/physics-worker.ts";
 
 test("generated worker source initializes and publishes cold coordinates",()=>{
@@ -18,4 +19,14 @@ test("one thorough worker request recovers a remote singleton component",()=>{
 test("a repeated thorough request reports running without restarting progress",()=>{
   const messages:Array<{type:string}>=[];let starts=0;const factory=new Function("postMessage","setInterval","clearInterval",`${createPhysicsWorkerSource()}; return onmessage;`) as (post:(message:{type:string})=>void,setIntervalFn:(callback:()=>void)=>number,clearIntervalFn:()=>void)=>((event:{data:unknown})=>void),handler=factory(message=>messages.push(message),()=>{starts++;return starts},()=>{}),payload={generation:1,nodes:[{id:"a",x:0,y:0,folder:"f",family:"folder:f",degree:0,radius:4,visible:true}],edges:[],opts:{center:1,repel:1,link:.04,distance:100,curvature:0,siblingLinkForce:1},nodeScale:1,heat:1,thorough:true};
   handler({data:{type:"init",...payload}});handler({data:{type:"forces",opts:payload.opts,thorough:true}});assert.equal(starts,1);assert.equal(messages.at(-1)?.type,"analysisRunning");
+});
+
+test("minified production worker source reaches a terminal message without free identifiers",()=>{
+  const output=buildSync({stdin:{contents:'export { createPhysicsWorkerSource } from "./src/physics-worker.ts";',resolveDir:process.cwd(),loader:"ts"},bundle:true,format:"cjs",platform:"node",target:"es2022",minify:true,write:false}).outputFiles[0]!.text,module={exports:{}} as {exports:{createPhysicsWorkerSource:()=>string}};
+  new Function("module","exports",output)(module,module.exports);
+  const source=module.exports.createPhysicsWorkerSource(),messages:Array<{type:string}>=[];let intervalCallback:(()=>void)|undefined;
+  const factory=new Function("postMessage","setInterval","clearInterval",`${source}; return onmessage;`) as (post:(message:{type:string})=>void,setIntervalFn:(callback:()=>void)=>number,clearIntervalFn:()=>void)=>((event:{data:unknown})=>void),handler=factory(message=>messages.push(message),callback=>{intervalCallback=callback;return 1},()=>{intervalCallback=undefined});
+  handler({data:{type:"init",generation:1,nodes:[{id:"a",x:0,y:0,folder:"f",family:"folder:f",degree:0,radius:4,visible:true}],edges:[],opts:{center:1,repel:1,link:.04,distance:100,curvature:0,siblingLinkForce:1},nodeScale:1,heat:1,thorough:true}});
+  for(let index=0;intervalCallback&&index<4000;index++)intervalCallback();
+  assert.ok(messages.some(message=>message.type==="settled"||message.type==="incomplete"),"minified worker never emitted a terminal message");
 });

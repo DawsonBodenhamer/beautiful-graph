@@ -1,12 +1,11 @@
 import { centroidAcceleration, repelFactor } from "./center-force.ts";
-import { convergenceDecision, familyComponentIds, linkSpringImpulse, normalizedForceResidual } from "./physics-force.ts";
+import { convergenceDecision, familyComponentIds, linkSpringImpulse } from "./physics-force.ts";
 
 export function createPhysicsWorkerSource():string {
   const source = `
     const centroidForce=${centroidAcceleration.toString()};
     const repelScale=${repelFactor.toString()};
     const springImpulse=${linkSpringImpulse.toString()};
-    const normalizedForceResidual=${normalizedForceResidual.toString()};
     const decideConvergence=${convergenceDecision.toString()};
     const deriveFamilyComponents=${familyComponentIds.toString()};
     let nodes=[],edges=[],opts={center:1.23589544,repel:1,link:.041472,distance:362.874,curvature:0,siblingLinkForce:1};

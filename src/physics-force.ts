@@ -25,6 +25,8 @@ export function normalizedForceResidual(energy:number,alpha:number):number {
 }
 
 export function convergenceDecision(overlap:number,energy:number,alpha:number,thorough:boolean,cycle:number,maxCycles:number):{state:"settled"|"reheat"|"incomplete";residual:number} {
-  const residual=normalizedForceResidual(energy,alpha),accepted=overlap<=.25&&(!thorough||residual<=.35);
+  // Keep this function self-contained. Its source is serialized into the
+  // production worker, where bundler-renamed free identifiers do not exist.
+  const residual=!Number.isFinite(energy)||energy<0?Number.POSITIVE_INFINITY:energy/Math.max(1e-6,alpha*alpha),accepted=overlap<=.25&&(!thorough||residual<=.35);
   return{state:accepted?"settled":cycle<maxCycles?"reheat":"incomplete",residual};
 }
