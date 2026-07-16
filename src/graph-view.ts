@@ -19,7 +19,7 @@ import { clampNumericValue, formatNumericValue, numericDragMultiplier, quantizeN
 import { analyzedForceProfile as deriveAnalyzedForceProfile } from "./force-profile";
 import { rankedPositionSnapshot, prunePositionSnapshot } from "./layout-persistence";
 import { expandedFocusIds, toggledFocusRoots } from "./focus-selection";
-import { labelScreenPosition } from "./label-layout";
+import { interpolateLabelOffset, labelScreenPosition } from "./label-layout";
 import { relaxLabelCollisions } from "./label-collision";
 import { orphanAllowed, thresholdFade } from "./presentation";
 
@@ -88,6 +88,7 @@ export class BeautifulGraphView extends ItemView {
   private presetOverwriteArmed = new Map<string, number>();
   private nodeTextures = new Map<string, Texture>();
   private labelOffsets = new Map<string,{x:number;y:number;side:1|-1}>();
+  private labelLayoutTargets = new Map<string,{x:number;y:number;side:1|-1}>();
   private hoverTimer?: number;
   private hoverCandidate?: string;
   private folderScope = "";
@@ -118,7 +119,7 @@ export class BeautifulGraphView extends ItemView {
   private lastLabelLayout=0;
   private labelLayoutDirty=true;
   private pendingFocusAdditive=false;
-  private recenterAfterPhysics=false;
+  private finalizeAfterPhysics=false;
   private physicsFinalizeTimer?:number;
 
   constructor(leaf: WorkspaceLeaf, private plugin: BeautifulGraphPlugin) { super(leaf); }
@@ -174,6 +175,7 @@ export class BeautifulGraphView extends ItemView {
     this.cancelHoverIntent();this.focusAnimation++;this.focusProgress=0;this.focusTarget=0;this.focusPinned=false;this.selectedFocusIds.clear();this.hovered=undefined;this.hideTooltip();this.scene.filters=[];this.startupVisible=false;
     this.physicsTicks = 0;
     this.physicsTargets.clear();
+    this.labelLayoutTargets.clear();
     if (rebuildModel) this.model = buildGraphModel(this.app, this.plugin.settings, this.plugin.data.positions);
     this.applyScopeFlags();
     this.buildScene();
@@ -197,11 +199,11 @@ export class BeautifulGraphView extends ItemView {
     this.renderGraph();new Notice(`${reason} The last valid layout was preserved.`);
   }
   private finishInitialLayout(generation:number):void {
-    if(!this.startupPending)return;if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);this.physicsFinalizeTimer=window.setTimeout(()=>{this.physicsFinalizeTimer=undefined;if(generation!==this.workerGeneration||!this.startupPending)return;const wasVisible=this.startupVisible;this.startupPending=false;if(this.startupTimer)window.clearTimeout(this.startupTimer);this.startupTimer=undefined;this.applyPhysicsTargets();for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld])layer.alpha=1;this.startupVisible=false;this.plugin.markLayoutCurrent();this.savePositions();if(wasVisible)this.fit();else this.fit(false);this.renderGraph()},200);
+    if(!this.startupPending)return;if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);this.physicsFinalizeTimer=window.setTimeout(()=>{this.physicsFinalizeTimer=undefined;if(generation!==this.workerGeneration||!this.startupPending)return;const wasVisible=this.startupVisible;this.startupPending=false;if(this.startupTimer)window.clearTimeout(this.startupTimer);this.startupTimer=undefined;this.applyPhysicsTargets();for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld])layer.alpha=1;this.startupVisible=false;this.plugin.markLayoutCurrent();this.savePositions();if(!wasVisible)this.fit(false);this.renderGraph()},200);
   }
 
-  private finishPhysicsLayout(generation:number,recenter:boolean):void {
-    if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);this.physicsFinalizeTimer=window.setTimeout(()=>{this.physicsFinalizeTimer=undefined;if(generation!==this.workerGeneration)return;this.applyPhysicsTargets();this.savePositions();if(recenter)this.fit();this.renderGraph()},200);
+  private finishPhysicsLayout(generation:number):void {
+    if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);this.physicsFinalizeTimer=window.setTimeout(()=>{this.physicsFinalizeTimer=undefined;if(generation!==this.workerGeneration)return;this.applyPhysicsTargets();this.savePositions();this.renderGraph()},200);
   }
 
   private startActiveWorker(force=false,initial:{heat?:number}={}):void {
@@ -213,7 +215,7 @@ export class BeautifulGraphView extends ItemView {
       if(event.data.generation!==this.workerGeneration||!event.data.coords||this.physicsFrozen)return;const type=event.data.type as string;if(!["tick","settled","preview","projection","incomplete","burstComplete"].includes(type)||type==="projection"&&(event.data.scaleGeneration??0)<this.nodeScaleGeneration)return;const coords=event.data.coords as Float32Array;
       for(let index=0;index<this.workerNodeOrder.length;index++){const id=this.workerNodeOrder[index],x=coords[index*2],y=coords[index*2+1];if(id===undefined||x===undefined||y===undefined||!Number.isFinite(x)||!Number.isFinite(y)||Math.abs(x)>500000||Math.abs(y)>500000){if(id!==undefined)this.physicsTargets.delete(id);continue}if(type==="projection"){const node=this.views.get(id)?.node;if(node){node.x=x;node.y=y}this.physicsTargets.delete(id)}else this.physicsTargets.set(id,{x,y})}this.motionUntil=type==="projection"?0:performance.now()+180;if(this.activeLenses.size)this.lensGeometryDirty=true;
       if(event.data.type==="tick")this.physicsTicks++;
-      if(type==="settled"||type==="incomplete")this.lastLabelLayout=0;if((type==="settled"||type==="incomplete")&&this.startupPending){this.queueRender();this.finishInitialLayout(generation);return}if(type==="burstComplete"||(type==="settled"||type==="incomplete")&&this.recenterAfterPhysics){this.lastLabelLayout=0;const recenter=this.recenterAfterPhysics;this.recenterAfterPhysics=false;this.queueRender();this.finishPhysicsLayout(generation,recenter);return}
+      if(type==="settled"||type==="incomplete")this.lastLabelLayout=0;if((type==="settled"||type==="incomplete")&&this.startupPending){this.queueRender();this.finishInitialLayout(generation);return}if(type==="burstComplete"||(type==="settled"||type==="incomplete")&&this.finalizeAfterPhysics){this.lastLabelLayout=0;this.finalizeAfterPhysics=false;this.queueRender();this.finishPhysicsLayout(generation);return}
       this.queueRender();
     };
     worker.onerror=(event)=>this.failPhysicsWorker(worker,generation,`Physics worker failed: ${event.message||"unknown worker error"}`);
@@ -328,14 +330,18 @@ export class BeautifulGraphView extends ItemView {
   }
 
   private layoutLabels(force=false):void {
-    const now=performance.now(),recompute=force||!this.zoomAnimating&&(this.labelLayoutDirty||now<this.motionUntil)&&now-this.lastLabelLayout>=100;
+    const now=performance.now(),interval=this.zoomAnimating?72:100,recompute=force||(this.labelLayoutDirty||now<this.motionUntil||this.zoomAnimating)&&now-this.lastLabelLayout>=interval;
     if(recompute){this.lastLabelLayout=now;this.labelLayoutDirty=false;
     const labels=[...this.views.values()].filter((v):v is NodeView&{label:Text;labelBg:Graphics}=>!!v.label&&!!v.labelBg&&v.label.visible).sort((a,b)=>Number(b.node.hub)-Number(a.node.hub)||b.node.degree-a.node.degree).map(v=>{const radius=v.node.radius*this.plugin.settings.display.nodeSize*this.scale,sx=this.offset.x+v.node.x*this.scale,sy=this.offset.y+v.node.y*this.scale,metrics=this.getLabelMetrics(v),screenScale=Math.abs(v.label.scale.x*this.scale),pillWidth=metrics.width*screenScale,pillHeight=metrics.height*screenScale,pillRadius=metrics.radius*screenScale,w=pillWidth+8,h=pillHeight+6;return{v,sx,sy,radius,w,h,pillWidth,pillHeight,pillRadius,x:sx,y:sy,homeX:sx,homeY:sy,side:-1 as 1|-1}});
     const pressure=(item:typeof labels[number],side:1|-1)=>{const y=item.sy+side*(item.radius+item.h/2+12);let score=y-item.h/2<8?8-(y-item.h/2):y+item.h/2>this.contentEl.clientHeight-8?y+item.h/2-(this.contentEl.clientHeight-8):0;for(const other of labels){if(other===item)continue;const ox=(item.w+other.w)/2+16-Math.abs(item.sx-other.sx),oy=item.h+other.radius+18-Math.abs(y-other.sy);if(ox>0&&oy>0)score+=ox*oy}return score};
-    for(const item of labels){const above=pressure(item,-1),below=pressure(item,1),prior=this.labelOffsets.get(item.v.node.id),preferred=below+4<above?1:-1;item.side=prior&&pressure(item,prior.side)<=pressure(item,(prior.side*-1) as 1|-1)*1.15+8?prior.side:preferred;item.homeX=item.sx;item.homeY=item.sy+item.side*(item.radius+item.h/2+12);item.x=item.homeX+(prior?.x??0)*.72;item.y=item.homeY+(prior?.y??0)*.72}
+    for(const item of labels){const above=pressure(item,-1),below=pressure(item,1),prior=this.labelLayoutTargets.get(item.v.node.id)??this.labelOffsets.get(item.v.node.id),preferred=below+4<above?1:-1;item.side=prior&&pressure(item,prior.side)<=pressure(item,(prior.side*-1) as 1|-1)*1.15+8?prior.side:preferred;item.homeX=item.sx;item.homeY=item.sy+item.side*(item.radius+item.h/2+12);item.x=item.homeX+(prior?.x??0)*.72;item.y=item.homeY+(prior?.y??0)*.72}
     const collisionLabels=labels.map(item=>Object.assign(item,{weight:item.v.node.hub?.32:.5})),maxOffsetX=Math.max(120,Math.min(480,this.contentEl.clientWidth*.4)),maxOffsetY=Math.max(90,Math.min(320,this.contentEl.clientHeight*.35));relaxLabelCollisions(collisionLabels,{maxOffsetX,maxOffsetY});
-    for(const item of labels){this.labelOffsets.set(item.v.node.id,{x:item.x-item.homeX,y:item.y-item.homeY,side:item.side})}}
+    for(const item of labels){const offset={x:item.x-item.homeX,y:item.y-item.homeY,side:item.side};this.labelLayoutTargets.set(item.v.node.id,offset);if(force||!this.zoomAnimating)this.labelOffsets.set(item.v.node.id,offset)}}
     this.positionLabelsAndLeaders();
+  }
+
+  private advanceLabelOffsets(deltaMS:number):void {
+    for(const [id,target] of this.labelLayoutTargets){const view=this.views.get(id),label=view?.label;if(!view||!label)continue;const metrics=this.getLabelMetrics(view),screenScale=Math.abs(label.scale.x*this.scale),radius=view.node.radius*this.plugin.settings.display.nodeSize*this.scale,pillHeight=metrics.height*screenScale,baseline=radius+(pillHeight+6)/2+12,current=this.labelOffsets.get(id)??target,next=interpolateLabelOffset(current,target,baseline,deltaMS);this.labelOffsets.set(id,Math.abs(next.x-target.x)<.02&&Math.abs(next.side*baseline+next.y-(target.side*baseline+target.y))<.02?target:next)}
   }
 
   private positionLabelsAndLeaders():void {
@@ -432,7 +438,7 @@ export class BeautifulGraphView extends ItemView {
     const handles=new Map<ForceKey,NumericControlHandle>(),add=(host:HTMLElement,key:ForceKey,label:string,min:number,max:number,step:number)=>handles.set(key,this.numericControl(host,{label,value:this.plugin.settings.forces[key],min,max,step,onChange:(value,final)=>{this.plugin.settings.forces[key]=value;if(final)void this.plugin.persistData();this.updateForces()}}));
     add(body,"center","Center Force",0,100,.01);add(body,"repel","Repel Force",0,100,.01);add(body,"siblingLinkForce","Sibling Force",0,100,.01);add(body,"rootLinkForce","Root Force",0,10,.01);add(body,"link","Link Force",0,10,.001);add(body,"distance","Link Distance",0,25000,1);add(body,"curvature","Link Curve",-2,2,.01);
     const sync=()=>{for(const [key,handle] of handles)handle.setValue(this.plugin.settings.forces[key])};
-    const reset=body.createEl("button",{cls:"beautiful-panel-reset",text:"Reset Forces"});reset.onclick=()=>{this.pushHistory();this.plugin.settings.forces={...DEFAULT_FORCES};sync();this.recenterAfterPhysics=true;void this.plugin.persistData();this.updateForces()};const tune=body.createEl("button",{cls:"beautiful-panel-reset",text:"Analyze & Tune"});tune.onclick=()=>{this.pushHistory();this.recenterAfterPhysics=true;this.autoTuneForces();sync()};this.addPresetControls(body,"forces",sync);
+    const reset=body.createEl("button",{cls:"beautiful-panel-reset",text:"Reset Forces"});reset.onclick=()=>{this.pushHistory();this.plugin.settings.forces={...DEFAULT_FORCES};sync();this.finalizeAfterPhysics=true;void this.plugin.persistData();this.updateForces()};const tune=body.createEl("button",{cls:"beautiful-panel-reset",text:"Analyze & Tune"});tune.onclick=()=>{this.pushHistory();this.finalizeAfterPhysics=true;this.autoTuneForces();sync()};this.addPresetControls(body,"forces",sync);
   })}
   private createDisplayPanel():void {this.createPanel("display","Display",body=>{
     type DisplayKey="textFade"|"nodeSize"|"linkThickness"|"glow"|"glowSize";
@@ -502,8 +508,8 @@ export class BeautifulGraphView extends ItemView {
     host.onpointerleave=()=>{panning=false;if(!this.dragged){this.cancelHoverIntent();this.clearHover()}};
     host.onwheel=e=>{if(this.isPointerOccluded(e.clientX,e.clientY))return;e.preventDefault();this.clearHoverImmediate();const rect=host.getBoundingClientRect(),px=e.clientX-rect.left,py=e.clientY-rect.top,target=Math.max(.08,Math.min(5,(this.zoomTarget?.scale??this.scale)*Math.exp(-e.deltaY*.001)));const base=this.zoomTarget??{scale:this.scale,x:this.offset.x,y:this.offset.y},gx=(px-base.x)/base.scale,gy=(py-base.y)/base.scale;this.zoomTarget={scale:target,x:px-gx*target,y:py-gy*target};this.animateZoom()};
   }
-  private applyCameraTransform():void {for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld]){layer.position.set(this.offset.x,this.offset.y);layer.scale.set(this.scale)}const roots=this.activeFocusRoots(),focused=this.focusedNodeIds(roots);for(const view of this.views.values()){const related=!roots.size||focused.has(view.node.id);if(view.icon)this.updateIconPresentation(view,related);if(view.label)this.updateLabelPresentation(view,related)}this.positionLabelsAndLeaders()}
-  private animateZoom():void {if(this.zoomAnimating)return;this.zoomAnimating=true;let last=performance.now();const step=(now:number)=>{if(!this.zoomTarget){this.zoomAnimating=false;return}const dt=Math.min(50,Math.max(1,now-last));last=now;const t=this.zoomTarget,blend=1-Math.exp(-dt/160);this.scale+=(t.scale-this.scale)*blend;this.offset.x+=(t.x-this.offset.x)*blend;this.offset.y+=(t.y-this.offset.y)*blend;this.applyCameraTransform();if(Math.abs(t.scale-this.scale)>.001||Math.hypot(t.x-this.offset.x,t.y-this.offset.y)>.2)requestAnimationFrame(step);else{this.scale=t.scale;this.offset={x:t.x,y:t.y};this.zoomTarget=undefined;this.zoomAnimating=false;this.lastLabelLayout=0;this.labelLayoutDirty=true;this.renderGraph()}};requestAnimationFrame(step)}
+  private applyCameraTransform(deltaMS=0):void {for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld]){layer.position.set(this.offset.x,this.offset.y);layer.scale.set(this.scale)}const roots=this.activeFocusRoots(),focused=this.focusedNodeIds(roots);for(const view of this.views.values()){const related=!roots.size||focused.has(view.node.id);if(view.icon)this.updateIconPresentation(view,related);if(view.label)this.updateLabelPresentation(view,related)}if(this.zoomAnimating)this.layoutLabels();if(deltaMS>0)this.advanceLabelOffsets(deltaMS);this.positionLabelsAndLeaders()}
+  private animateZoom():void {if(this.zoomAnimating)return;this.zoomAnimating=true;let last=performance.now();const step=(now:number)=>{if(!this.zoomTarget){this.zoomAnimating=false;return}const dt=Math.min(50,Math.max(1,now-last));last=now;const t=this.zoomTarget,blend=1-Math.exp(-dt/160);this.scale+=(t.scale-this.scale)*blend;this.offset.x+=(t.x-this.offset.x)*blend;this.offset.y+=(t.y-this.offset.y)*blend;this.applyCameraTransform(dt);if(Math.abs(t.scale-this.scale)>.001||Math.hypot(t.x-this.offset.x,t.y-this.offset.y)>.2)requestAnimationFrame(step);else{this.scale=t.scale;this.offset={x:t.x,y:t.y};this.zoomTarget=undefined;this.zoomAnimating=false;this.lastLabelLayout=0;this.labelLayoutDirty=true;this.renderGraph()}};requestAnimationFrame(step)}
   private setCategoryVisible(category:string,shown:boolean):void {this.pushHistory();this.plugin.settings.categoryVisibility[category]=shown;const changed:string[]=[];for(const node of this.model.nodes)if(node.category===category){const visible=shown&&isPathInFolderScope(node.path,this.folderScope);if(node.visible!==visible)changed.push(node.id);node.visible=visible}this.lensGeometryDirty=true;void this.plugin.persistData();if(this.search){void this.applySearch(this.search)}else{this.startActiveWorker();this.animateNodeVisibility(changed)}this.updateGraphCount();this.createPanels()}
   private makeObstacleGrid():Map<string,GraphNode[]>{const size=60,g=new Map<string,GraphNode[]>();for(const n of this.model.nodes)if(n.visible){const k=`${Math.floor(n.x/size)},${Math.floor(n.y/size)}`;const a=g.get(k)??[];a.push(n);g.set(k,a)}return g}
   private edgeBend(a:GraphNode,b:GraphNode,g:Map<string,GraphNode[]>):number {const size=60,dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy);if(len<20)return 0;let pressure=0;const seen=new Set<string>();for(const sample of [.2,.35,.5,.65,.8]){const cx=Math.floor((a.x+dx*sample)/size),cy=Math.floor((a.y+dy*sample)/size);for(let ox=-1;ox<=1;ox++)for(let oy=-1;oy<=1;oy++)for(const n of g.get(`${cx+ox},${cy+oy}`)??[]){if(n===a||n===b||seen.has(n.id))continue;seen.add(n.id);const t=((n.x-a.x)*dx+(n.y-a.y)*dy)/(len*len);if(t<.08||t>.92)continue;const side=((n.x-a.x)*dy-(n.y-a.y)*dx)/len,clearance=n.radius+14;if(Math.abs(side)<clearance)pressure+=(side>=0?-1:1)*(1-Math.abs(side)/clearance)}}return Math.max(-.34,Math.min(.34,pressure*.16))}

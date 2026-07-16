@@ -3,7 +3,7 @@ import type { BeautifulGraphSettings, GraphEdge, GraphModel, GraphNode, GraphPoi
 import { effectiveGroup, nodeAllowed } from "./groups";
 import { applyDerivedNodePresentation } from "./node-presentation";
 import { deriveGraphRelationships } from "./graph-relationships";
-import { familySeedPosition, savedFamilyAnchors, savedLayoutStats } from "./layout-persistence";
+import { distributedFamilyAnchors, familySeedPosition, savedFamilyAnchors, savedLayoutStats } from "./layout-persistence";
 import { orphanAllowed } from "./presentation";
 
 const CATEGORY = {
@@ -66,7 +66,7 @@ export function buildGraphModel(app: App, settings: BeautifulGraphSettings, posi
   });
   applyDerivedNodePresentation(nodes,edges,settings);
   if(useSavedLayout){
-    const familyAnchors=savedFamilyAnchors(nodes,positions);
+    const familyAnchors=distributedFamilyAnchors(nodes.map(node=>node.family),savedFamilyAnchors(nodes,positions),savedCenter,savedSpan);
     const familyOrdinals=new Map<string,number>();
     for(const node of nodes){
       if(positions[node.path])continue;

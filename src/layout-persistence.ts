@@ -36,6 +36,21 @@ export function savedFamilyAnchors(nodes:Iterable<FamilyPath>,positions:Record<s
   return new Map([...totals].map(([family,total])=>[family,{x:total.x/total.count,y:total.y/total.count}]));
 }
 
+export function distributedFamilyAnchors(families:Iterable<string>,saved:ReadonlyMap<string,GraphPoint>,fallback:GraphPoint,savedSpan:number):Map<string,GraphPoint> {
+  const result=new Map(saved),missing=[...new Set(families)].filter(family=>!result.has(family)).sort();
+  if(!missing.length)return result;
+  const goldenAngle=Math.PI*(3-Math.sqrt(5)),span=Math.max(120,Math.min(1600,Math.max(savedSpan*.42,Math.sqrt(missing.length)*48))),occupied=[...result.values()];
+  for(let index=0;index<missing.length;index++){
+    const radius=span*(.25+.75*Math.sqrt((index+.5)/missing.length));let best:GraphPoint|undefined,bestClearance=-1;
+    for(let candidate=0;candidate<24;candidate++){
+      const angle=index*goldenAngle+candidate/24*Math.PI*2,point={x:fallback.x+Math.cos(angle)*radius,y:fallback.y+Math.sin(angle)*radius},clearance=occupied.length?Math.min(...occupied.map(anchor=>(point.x-anchor.x)**2+(point.y-anchor.y)**2)):radius*radius;
+      if(clearance>bestClearance){best=point;bestClearance=clearance}
+    }
+    result.set(missing[index]!,best!);occupied.push(best!);
+  }
+  return result;
+}
+
 export function familySeedPosition(path:string,index:number,family:string,anchors:ReadonlyMap<string,GraphPoint>,fallback:GraphPoint,spacing=12):GraphPoint {
   const anchor=anchors.get(family)??fallback,seed=[...family].reduce((value,char)=>Math.imul(value^char.charCodeAt(0),16777619),2166136261)>>>0,baseAngle=seed/4294967296*Math.PI*2,goldenAngle=Math.PI*(3-Math.sqrt(5)),angle=baseAngle+index*goldenAngle,spread=Math.max(8,spacing)*Math.sqrt(index+1);
   return{x:anchor.x+Math.cos(angle)*spread,y:anchor.y+Math.sin(angle)*spread};
