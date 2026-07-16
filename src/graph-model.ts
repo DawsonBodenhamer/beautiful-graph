@@ -3,7 +3,7 @@ import type { BeautifulGraphSettings, GraphEdge, GraphModel, GraphNode, GraphPoi
 import { effectiveGroup, nodeAllowed } from "./groups";
 import { applyDerivedNodePresentation } from "./node-presentation";
 import { deriveGraphRelationships } from "./graph-relationships";
-import { distributedFamilyAnchors, familySeedPosition, savedFamilyAnchors, savedLayoutStats } from "./layout-persistence";
+import { distributedFamilyAnchors, familySeedPosition, savedFamilyAnchors, savedLayoutStats, type SeedObstacle } from "./layout-persistence";
 import { orphanAllowed } from "./presentation";
 
 const CATEGORY = {
@@ -67,10 +67,11 @@ export function buildGraphModel(app: App, settings: BeautifulGraphSettings, posi
   applyDerivedNodePresentation(nodes,edges,settings);
   if(useSavedLayout){
     const familyAnchors=distributedFamilyAnchors(nodes.map(node=>node.family),savedFamilyAnchors(nodes,positions),savedCenter,savedSpan);
-    const familyOrdinals=new Map<string,number>();
-    for(const node of nodes){
-      if(positions[node.path])continue;
-      const ordinal=familyOrdinals.get(node.family)??0;familyOrdinals.set(node.family,ordinal+1);const spacing=Math.max(12,node.radius*settings.display.nodeSize+5),seed=familySeedPosition(node.path,ordinal,node.family,familyAnchors,savedCenter,spacing);node.x=seed.x;node.y=seed.y;
+    const familyOrdinals=new Map<string,number>(),familyObstacles=new Map<string,SeedObstacle[]>();
+    for(const node of nodes){if(!positions[node.path])continue;const obstacles=familyObstacles.get(node.family)??[];obstacles.push({x:node.x,y:node.y,radius:node.radius*settings.display.nodeSize+2});familyObstacles.set(node.family,obstacles)}
+    const unsaved=nodes.filter(node=>!positions[node.path]).sort((a,b)=>a.family.localeCompare(b.family)||b.radius-a.radius||a.path.localeCompare(b.path));
+    for(const node of unsaved){
+      const ordinal=familyOrdinals.get(node.family)??0,obstacles=familyObstacles.get(node.family)??[],radius=node.radius*settings.display.nodeSize+2;familyOrdinals.set(node.family,ordinal+1);const spacing=Math.max(12,radius+4),seed=familySeedPosition(node.path,ordinal,node.family,familyAnchors,savedCenter,spacing,obstacles,radius);node.x=seed.x;node.y=seed.y;obstacles.push({...seed,radius});familyObstacles.set(node.family,obstacles);
     }
   }
   return { nodes, edges };

@@ -192,6 +192,12 @@ export class BeautifulGraphView extends ItemView {
 
   private previewInitialLayout():void{if(!this.startupPending)return;for(const node of this.model.nodes){const target=this.physicsTargets.get(node.id);if(target){node.x=target.x;node.y=target.y}}for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld])layer.alpha=1;this.fit(false);this.renderGraph()}
   private applyPhysicsTargets():void {for(const node of this.model.nodes){const target=this.physicsTargets.get(node.id);if(target){node.x=target.x;node.y=target.y}}this.physicsTargets.clear();this.motionUntil=0}
+  private presentationTargetDelta():number {let maximum=0;for(const node of this.model.nodes){const target=this.physicsTargets.get(node.id);if(target)maximum=Math.max(maximum,Math.hypot(target.x-node.x,target.y-node.y))}return maximum}
+  private finishPresentationTargets(generation:number,done:()=>void):void {
+    if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);const deadline=performance.now()+1200;
+    const poll=()=>{this.physicsFinalizeTimer=undefined;if(generation!==this.workerGeneration)return;const screenDelta=this.presentationTargetDelta()*Math.max(.08,this.scale);if(screenDelta<=.15||performance.now()>=deadline||!this.physicsTargets.size){this.applyPhysicsTargets();done();return}this.motionUntil=performance.now()+80;this.queueRender();this.physicsFinalizeTimer=window.setTimeout(poll,16)};
+    this.motionUntil=deadline;this.physicsFinalizeTimer=window.setTimeout(poll,16);
+  }
   private failPhysicsWorker(worker:Worker,generation:number,reason:string):void {
     if(this.worker!==worker||this.workerGeneration!==generation)return;
     worker.terminate();this.worker=undefined;if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);this.physicsFinalizeTimer=undefined;this.workerNodeIds.clear();this.workerNodeOrder=[];this.physicsTargets.clear();this.motionUntil=0;
@@ -199,11 +205,11 @@ export class BeautifulGraphView extends ItemView {
     this.renderGraph();new Notice(`${reason} The last valid layout was preserved.`);
   }
   private finishInitialLayout(generation:number):void {
-    if(!this.startupPending)return;if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);this.physicsFinalizeTimer=window.setTimeout(()=>{this.physicsFinalizeTimer=undefined;if(generation!==this.workerGeneration||!this.startupPending)return;const wasVisible=this.startupVisible;this.startupPending=false;if(this.startupTimer)window.clearTimeout(this.startupTimer);this.startupTimer=undefined;this.applyPhysicsTargets();for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld])layer.alpha=1;this.startupVisible=false;this.plugin.markLayoutCurrent();this.savePositions();if(!wasVisible)this.fit(false);this.renderGraph()},200);
+    if(!this.startupPending)return;const wasVisible=this.startupVisible;this.finishPresentationTargets(generation,()=>{if(generation!==this.workerGeneration||!this.startupPending)return;this.startupPending=false;if(this.startupTimer)window.clearTimeout(this.startupTimer);this.startupTimer=undefined;for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld])layer.alpha=1;this.startupVisible=false;this.plugin.markLayoutCurrent();this.savePositions();if(!wasVisible)this.fit();this.renderGraph()});
   }
 
   private finishPhysicsLayout(generation:number):void {
-    if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);this.physicsFinalizeTimer=window.setTimeout(()=>{this.physicsFinalizeTimer=undefined;if(generation!==this.workerGeneration)return;this.applyPhysicsTargets();this.savePositions();this.renderGraph()},200);
+    this.finishPresentationTargets(generation,()=>{if(generation!==this.workerGeneration)return;this.savePositions();this.renderGraph()});
   }
 
   private startActiveWorker(force=false,initial:{heat?:number}={}):void {
