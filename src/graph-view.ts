@@ -12,7 +12,7 @@ import { resolvePanelPosition } from "./panel-layout";
 import { analyzeAutoGroups, defaultGroupIcon, displayDirectory, effectiveGroup, GROUP_PALETTES, nodeAllowed, normalizeIcon, paletteFallbackColor } from "./groups";
 import { activeNodeIds, applyDerivedNodePresentation, sameNodeIds } from "./node-presentation";
 import { resolveLegacyPanelGeometry } from "./settings-migration";
-import { captureResponsiveCamera, fitCamera, restoreResponsiveCamera, viewportCenter, type CameraViewport, type GraphBounds } from "./camera";
+import { captureResponsiveCamera, fitCamera, radiusAwareBounds, restoreResponsiveCamera, viewportCenter, type CameraViewport, type GraphBounds } from "./camera";
 import { acceptsHoverWhileDragging, beginDrag, dragPointerDisposition, endsPhysicsDrag, moveDrag, shouldClearHoverOnPointerOut, startsPhysicsDrag, suppressesPostDragTap, type DragState } from "./drag-state";
 import { tetherEndpoints } from "./tether-geometry";
 import { clampNumericValue, formatNumericValue, numericDragMultiplier, quantizeNumericValue, textFadeMaximum, type NumericControlSpec } from "./numeric-control";
@@ -22,11 +22,29 @@ import { expandedFocusIds, toggledFocusRoots } from "./focus-selection";
 import { interpolateLabelOffset, labelScreenPosition } from "./label-layout";
 import { relaxLabelCollisions } from "./label-collision";
 import { orphanAllowed, thresholdFade } from "./presentation";
+import { admitStartup } from "./startup-admission";
+import { reconcileGraphNodes } from "./graph-reconcile";
 
 export const BEAUTIFUL_GRAPH_VIEW = "beautiful-graph";
-type NodeView = { node: GraphNode; body: Graphics; surface: Sprite; glow: Sprite; icon?:Text; iconRes?: number; label?: Text; labelBg?: Graphics; leader?:Graphics; labelMetrics?:{width:number;height:number;radius:number}; styleKey?: string };
+type NodeView = { node: GraphNode; surface: Sprite; glow: Sprite; icon?:Text; iconRes?: number; label?: Text; labelBg?: Graphics; leader?:Graphics; labelMetrics?:{width:number;height:number;radius:number}; styleKey?: string };
 type NumericControlHandle={readout:HTMLInputElement;setValue:(value:number)=>number};
 type ViewNumericControlSpec={label:string;value:number;min:number;max:number|(()=>number);step:number;onChange:(value:number,final:boolean)=>void};
+type StartupPhase="waiting"|"building"|"settling"|"complete"|"cancelled";
+type StartupMetrics={
+  phase:StartupPhase;
+  openedAt:number;
+  readinessAt?:number;
+  modelCompleteAt?:number;
+  firstRevealAt?:number;
+  firstNodeCount:number;
+  finalNodeCount:number;
+  workerGenerations:number;
+  topologyRebuilds:number;
+  workerTerminalAt?:number;
+  presentationStableAt?:number;
+  cameraStableAt?:number;
+  finalCameraResidual?:number;
+};
 export class BeautifulGraphView extends ItemView {
   private pixi?: Application;
   private scene = new Container();
@@ -61,6 +79,7 @@ export class BeautifulGraphView extends ItemView {
   private dragged?: GraphNode;
   private dragState?:DragState;
   private canvasHost?:HTMLElement;
+  private loadingEl?:HTMLElement;
   private dragFrame=0;
   private pendingDrag?:{id:string;x:number;y:number};
   private dragButtons=0;
@@ -85,6 +104,7 @@ export class BeautifulGraphView extends ItemView {
   private lastBendUpdate = 0;
   private lastGeometryRender = 0;
   private modelRefreshTimer?: number;
+  private pendingModelRefresh=false;
   private presetOverwriteArmed = new Map<string, number>();
   private nodeTextures = new Map<string, Texture>();
   private labelOffsets = new Map<string,{x:number;y:number;side:1|-1}>();
@@ -110,14 +130,20 @@ export class BeautifulGraphView extends ItemView {
   private activePanelId="groups";
   private panelResizeObserver?:ResizeObserver;
   private lastViewport?:CameraViewport;
-  private startupPending=false;
-  private startupVisible=false;
-  private startupTimer?:number;
+  private startupPhase:StartupPhase="waiting";
+  private startupMetrics:StartupMetrics={phase:"waiting",openedAt:performance.now(),firstNodeCount:0,finalNodeCount:0,workerGenerations:0,topologyRebuilds:0};
+  private startupCameraTracking=true;
+  private startupWorkerTerminalGeneration?:number;
+  private closed=false;
+  private listenersInstalled=false;
+  private cancelStartupAdmission?:()=>void;
   private nodeScaleFrame=0;
   private nodeScaleGeneration=0;
   private pendingNodeScaleFinal=false;
   private lastLabelLayout=0;
   private labelLayoutDirty=true;
+  private pendingLabels=new Set<string>();
+  private labelCreationFrame=0;
   private pendingFocusAdditive=false;
   private finalizeAfterPhysics=false;
   private physicsFinalizeTimer?:number;
@@ -126,23 +152,19 @@ export class BeautifulGraphView extends ItemView {
   getViewType(): string { return BEAUTIFUL_GRAPH_VIEW; }
   getDisplayText(): string { return "Beautiful Graph"; }
   getIcon(): string { return "orbit"; }
+  getStartupMetrics():Readonly<StartupMetrics>{return {...this.startupMetrics}}
 
   async onOpen(): Promise<void> {
+    this.closed=false;this.setStartupPhase("waiting");this.startupMetrics={phase:"waiting",openedAt:performance.now(),firstNodeCount:0,finalNodeCount:0,workerGenerations:0,topologyRebuilds:0};
     this.contentEl.empty();
     this.contentEl.addClass("beautiful-graph-view");
-    const canvasHost = this.contentEl.createDiv({ cls: "beautiful-graph-canvas" });this.canvasHost=canvasHost;canvasHost.tabIndex=0;
+    const canvasHost = this.contentEl.createDiv({ cls: "beautiful-graph-canvas" });this.canvasHost=canvasHost;canvasHost.tabIndex=0;this.loadingEl=this.contentEl.createDiv({cls:"beautiful-graph-loading",text:"Building graph…"});
     this.pixi = new Application();
     await this.pixi.init({ resizeTo: canvasHost, antialias: true, backgroundAlpha: 0, preference: "webgl" });
     this.pixi.ticker.add(ticker=>this.animatePresentation(ticker.deltaMS));
     const syncTicker=()=>{const active=document.hasFocus()&&this.app.workspace.getActiveViewOfType(BeautifulGraphView)===this;if(active)this.pixi?.ticker.start();else this.pixi?.ticker.stop()};
     this.registerEvent(this.app.workspace.on("active-leaf-change",syncTicker));
     this.registerDomEvent(window,"focus",syncTicker);this.registerDomEvent(window,"blur",()=>{this.cancelHoverIntent();this.clearHover();syncTicker()});
-    this.registerEvent(this.app.metadataCache.on("changed",()=>this.scheduleModelRefresh()));
-    this.registerEvent(this.app.metadataCache.on("resolved",()=>this.scheduleModelRefresh()));
-    this.registerEvent(this.app.vault.on("create",()=>this.scheduleModelRefresh()));
-    this.registerEvent(this.app.vault.on("modify",()=>this.scheduleModelRefresh()));
-    this.registerEvent(this.app.vault.on("delete",()=>this.scheduleModelRefresh()));
-    this.registerEvent(this.app.vault.on("rename",()=>this.scheduleModelRefresh()));
     this.registerDomEvent(window,"keydown",e=>{const target=e.target as HTMLElement|null,isTextEditor=target instanceof HTMLTextAreaElement||(target instanceof HTMLInputElement&&["text","search","email","url","number","password"].includes(target.type)),isControl=target instanceof HTMLInputElement||target instanceof HTMLTextAreaElement||target instanceof HTMLSelectElement||target instanceof HTMLButtonElement;if(!document.hasFocus()||this.app.workspace.getActiveViewOfType(BeautifulGraphView)!==this)return;if(e.code==="Space"&&target===this.searchInput&&!this.searchInput.value.length&&!e.ctrlKey&&!e.altKey&&!e.metaKey){e.preventDefault();e.stopPropagation();this.fit();return}if(e.ctrlKey&&!isTextEditor&&((!e.shiftKey&&e.key.toLowerCase()==="z")||e.key.toLowerCase()==="y")){e.preventDefault();e.stopPropagation();if(e.key.toLowerCase()==="y")this.redoSettings();else this.undoSettings();return}if(e.ctrlKey&&e.shiftKey&&!isTextEditor&&e.key.toLowerCase()==="z"){e.preventDefault();e.stopPropagation();this.redoSettings();return}if(e.code==="Space"&&!e.ctrlKey&&!e.altKey&&!e.metaKey&&!isControl){e.preventDefault();e.stopPropagation();this.fit();return}if(!isTextEditor&&!e.ctrlKey&&!e.altKey&&!e.metaKey&&e.key.length===1){this.searchInput?.focus();this.searchInput?.setSelectionRange(this.searchInput.value.length,this.searchInput.value.length)}});
     this.registerDomEvent(window,"pointermove",event=>{if(!this.dragged||this.dragState?.pointerId!==event.pointerId)return;this.dragButtons=event.buttons;if((event.buttons&1)===0){this.releaseNode(event.pointerId);return}const target=event.target as Node|null;if(!target||!canvasHost.contains(target))this.moveNodeDrag(event)});
     this.registerDomEvent(window,"pointerup",event=>{if(event.button===0)this.releaseNode(event.pointerId)});
@@ -154,10 +176,6 @@ export class BeautifulGraphView extends ItemView {
     this.focusWorld.addChild(this.focusLinks,this.focusGlowLayer,this.focusNodeLayer,this.focusLeaderLayer,this.focusLabelLayer);
     this.scene.addChild(this.world);this.pixi.stage.addChild(this.scene,this.focusWorld);
     this.folderScope="";
-    this.model = buildGraphModel(this.app, this.plugin.settings, this.plugin.data.positions);
-    const prunedPositions=prunePositionSnapshot(this.plugin.data.positions,this.model.nodes.map(node=>node.path));if(Object.keys(prunedPositions).length!==Object.keys(this.plugin.data.positions).length){this.plugin.data.positions=prunedPositions;void this.plugin.persistData()}
-    if(this.folderScope&&!this.model.nodes.some(node=>isPathInFolderScope(node.path,this.folderScope)))this.folderScope="";
-    this.applyScopeFlags();
     this.createToolbar();
     this.plugin.registerGraph(this);
     this.updateBreadcrumb();
@@ -165,69 +183,88 @@ export class BeautifulGraphView extends ItemView {
     this.lastViewport=this.cameraViewport();this.panelResizeObserver=new ResizeObserver(()=>{this.handleViewportResize();this.layoutPanels()});this.panelResizeObserver.observe(this.contentEl);
     this.createGuiDock();
     this.bindNavigation(canvasHost);
-    this.rebuild(false,true,true);
     syncTicker();
+    this.cancelStartupAdmission=admitStartup(this.app.workspace.layoutReady,ready=>this.app.workspace.onLayoutReady(ready),()=>{if(!this.closed&&this.startupPhase==="waiting")void this.beginStartup()});
   }
 
-  async onClose(): Promise<void> { this.plugin.unregisterGraph(this);this.panelResizeObserver?.disconnect();if(this.startupTimer)window.clearTimeout(this.startupTimer);if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);if(this.nodeScaleFrame)cancelAnimationFrame(this.nodeScaleFrame);if(this.modelRefreshTimer)window.clearTimeout(this.modelRefreshTimer);if(this.searchTimer)window.clearTimeout(this.searchTimer);for(const timer of this.folderTapTimers.values())window.clearTimeout(timer);this.cancelHoverIntent();this.savePositions(); this.worker?.terminate(); this.pixi?.destroy(true);for(const texture of this.nodeTextures.values())texture.destroy(true);this.nodeTextures.clear(); }
+  async onClose(): Promise<void> { this.closed=true;this.cancelStartupAdmission?.();this.setStartupPhase("cancelled");this.workerGeneration++;this.plugin.unregisterGraph(this);this.panelResizeObserver?.disconnect();if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);if(this.nodeScaleFrame)cancelAnimationFrame(this.nodeScaleFrame);if(this.labelCreationFrame)cancelAnimationFrame(this.labelCreationFrame);if(this.modelRefreshTimer)window.clearTimeout(this.modelRefreshTimer);if(this.searchTimer)window.clearTimeout(this.searchTimer);for(const timer of this.folderTapTimers.values())window.clearTimeout(timer);this.cancelHoverIntent();if(this.model.nodes.length)this.savePositions(); this.worker?.terminate(); this.pixi?.destroy(true);for(const texture of this.nodeTextures.values())texture.destroy(true);this.nodeTextures.clear(); }
+
+  private setStartupPhase(phase:StartupPhase):void{this.startupPhase=phase;this.startupMetrics.phase=phase}
+  private installModelListeners():void{
+    if(this.listenersInstalled)return;this.listenersInstalled=true;
+    this.registerEvent(this.app.metadataCache.on("changed",()=>this.scheduleModelRefresh()));
+    this.registerEvent(this.app.metadataCache.on("resolve",()=>this.scheduleModelRefresh()));
+    this.registerEvent(this.app.vault.on("create",()=>this.scheduleModelRefresh()));
+    this.registerEvent(this.app.vault.on("delete",()=>this.scheduleModelRefresh()));
+    this.registerEvent(this.app.vault.on("rename",()=>this.scheduleModelRefresh()));
+  }
+  private async beginStartup():Promise<void>{
+    if(this.closed||this.startupPhase!=="waiting")return;this.startupPhase="building";this.startupMetrics.phase="building";this.startupMetrics.readinessAt=performance.now();this.installModelListeners();
+    const model=buildGraphModel(this.app,this.plugin.settings,this.plugin.data.positions);if(this.closed)return;this.model=model;this.startupMetrics.modelCompleteAt=performance.now();this.startupMetrics.finalNodeCount=model.nodes.length;
+    const pruned=prunePositionSnapshot(this.plugin.data.positions,model.nodes.map(node=>node.path));if(Object.keys(pruned).length!==Object.keys(this.plugin.data.positions).length){this.plugin.data.positions=pruned;void this.plugin.persistData()}
+    if(this.folderScope&&!model.nodes.some(node=>isPathInFolderScope(node.path,this.folderScope)))this.folderScope="";this.applyScopeFlags();this.updateGraphCount();this.createPanels();
+    for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld])layer.alpha=0;
+    this.prepareScene();this.startActiveWorker(true,{heat:1,startup:true});await this.populateSceneBatched();if(this.closed||this.startupPhase!=="building")return;
+    this.revealStartup();
+  }
+
+  private revealStartup():void{
+    this.startupMetrics.firstRevealAt=performance.now();this.startupMetrics.firstNodeCount=this.views.size;this.setStartupPhase("settling");
+    this.loadingEl?.remove();this.loadingEl=undefined;for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld])layer.alpha=1;this.fit(false);this.applyCameraTransform();this.renderGraph();
+    if(this.startupWorkerTerminalGeneration===this.workerGeneration)this.finishInitialLayout(this.workerGeneration);
+  }
 
   rebuild(rebuildModel = true, fitInitial = true,initialOpen=false): void {
-    this.cancelHoverIntent();this.focusAnimation++;this.focusProgress=0;this.focusTarget=0;this.focusPinned=false;this.selectedFocusIds.clear();this.hovered=undefined;this.hideTooltip();this.scene.filters=[];this.startupVisible=false;
+    this.cancelHoverIntent();this.focusAnimation++;this.focusProgress=0;this.focusTarget=0;this.focusPinned=false;this.selectedFocusIds.clear();this.hovered=undefined;this.hideTooltip();this.scene.filters=[];
     this.physicsTicks = 0;
     this.physicsTargets.clear();
     this.labelLayoutTargets.clear();
     if (rebuildModel) this.model = buildGraphModel(this.app, this.plugin.settings, this.plugin.data.positions);
     this.applyScopeFlags();
     this.buildScene();
-    if(initialOpen)this.startInitialLayout();else{this.startActiveWorker(true);if(fitInitial)requestAnimationFrame(()=>this.fit(false))}
+    if(initialOpen)this.startActiveWorker(true,{heat:1});else{this.startActiveWorker(true);if(fitInitial)requestAnimationFrame(()=>this.fit(false))}
     this.renderGraph();
   }
 
-  private startInitialLayout():void {
-    const active=this.model.nodes.filter(node=>node.visible),saved=active.filter(node=>this.plugin.data.positions[node.path]!==undefined).length,trusted=active.length>0&&saved/active.length>=.85;
-    if(trusted){this.startupPending=false;for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld])layer.alpha=1;this.startActiveWorker(true,{heat:0});requestAnimationFrame(()=>this.fit(false));return}
-    if(saved>0){this.startupPending=true;this.startupVisible=true;for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld])layer.alpha=1;this.startActiveWorker(true,{heat:1});requestAnimationFrame(()=>this.fit(false));return}
-    this.startupPending=true;for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld])layer.alpha=0;this.startActiveWorker(true,{heat:1});this.startupTimer=window.setTimeout(()=>this.previewInitialLayout(),1800);
-  }
-
-  private previewInitialLayout():void{if(!this.startupPending)return;for(const node of this.model.nodes){const target=this.physicsTargets.get(node.id);if(target){node.x=target.x;node.y=target.y}}for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld])layer.alpha=1;this.fit(false);this.renderGraph()}
   private applyPhysicsTargets():void {for(const node of this.model.nodes){const target=this.physicsTargets.get(node.id);if(target){node.x=target.x;node.y=target.y}}this.physicsTargets.clear();this.motionUntil=0}
   private presentationTargetDelta():number {let maximum=0;for(const node of this.model.nodes){const target=this.physicsTargets.get(node.id);if(target)maximum=Math.max(maximum,Math.hypot(target.x-node.x,target.y-node.y))}return maximum}
   private finishPresentationTargets(generation:number,done:()=>void):void {
-    if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);const deadline=performance.now()+1200;
-    const poll=()=>{this.physicsFinalizeTimer=undefined;if(generation!==this.workerGeneration)return;const screenDelta=this.presentationTargetDelta()*Math.max(.08,this.scale);if(screenDelta<=.15||performance.now()>=deadline||!this.physicsTargets.size){this.applyPhysicsTargets();done();return}this.motionUntil=performance.now()+80;this.queueRender();this.physicsFinalizeTimer=window.setTimeout(poll,16)};
+    if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);const deadline=performance.now()+150;
+    const poll=()=>{this.physicsFinalizeTimer=undefined;if(generation!==this.workerGeneration)return;const screenDelta=this.presentationTargetDelta()*Math.max(.08,this.scale),cameraStable=!this.startupCameraTracking||this.startupCameraResidual()<=.2;if((screenDelta<=.15||!this.physicsTargets.size)&&cameraStable||performance.now()>=deadline){this.applyPhysicsTargets();done();return}this.motionUntil=performance.now()+80;this.queueRender();this.physicsFinalizeTimer=window.setTimeout(poll,16)};
     this.motionUntil=deadline;this.physicsFinalizeTimer=window.setTimeout(poll,16);
   }
   private failPhysicsWorker(worker:Worker,generation:number,reason:string):void {
     if(this.worker!==worker||this.workerGeneration!==generation)return;
     worker.terminate();this.worker=undefined;if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);this.physicsFinalizeTimer=undefined;this.workerNodeIds.clear();this.workerNodeOrder=[];this.physicsTargets.clear();this.motionUntil=0;
-    if(this.startupPending){this.startupPending=false;if(this.startupTimer)window.clearTimeout(this.startupTimer);this.startupTimer=undefined;for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld])layer.alpha=1;this.fit(false)}
+    if(this.startupPhase==="building")this.startupWorkerTerminalGeneration=generation;else if(this.startupPhase==="settling")this.completeStartup();
     this.renderGraph();new Notice(`${reason} The last valid layout was preserved.`);
   }
   private finishInitialLayout(generation:number):void {
-    if(!this.startupPending)return;const wasVisible=this.startupVisible;this.finishPresentationTargets(generation,()=>{if(generation!==this.workerGeneration||!this.startupPending)return;this.startupPending=false;if(this.startupTimer)window.clearTimeout(this.startupTimer);this.startupTimer=undefined;for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld])layer.alpha=1;this.startupVisible=false;this.plugin.markLayoutCurrent();this.savePositions();if(!wasVisible)this.fit();this.renderGraph()});
+    if(this.startupPhase!=="settling")return;this.finishPresentationTargets(generation,()=>{if(generation!==this.workerGeneration||this.startupPhase!=="settling")return;this.completeStartup()});
   }
+
+  private completeStartup():void{const now=performance.now();this.setStartupPhase("complete");this.startupMetrics.presentationStableAt=now;this.startupMetrics.cameraStableAt=now;this.startupMetrics.finalCameraResidual=this.startupCameraResidual();this.plugin.markLayoutCurrent();this.savePositions();this.renderGraph();if(this.pendingModelRefresh){this.pendingModelRefresh=false;this.scheduleModelRefresh()}}
 
   private finishPhysicsLayout(generation:number):void {
     this.finishPresentationTargets(generation,()=>{if(generation!==this.workerGeneration)return;this.savePositions();this.renderGraph()});
   }
 
-  private startActiveWorker(force=false,initial:{heat?:number}={}):void {
+  private startActiveWorker(force=false,initial:{heat?:number;startup?:boolean}={}):void {
     this.physicsFrozen=false;
     const active=this.model.nodes.filter(node=>node.visible),ids=activeNodeIds(this.model.nodes);if(!force&&this.worker&&sameNodeIds(ids,this.workerNodeIds))return;this.workerNodeIds=ids;
-    this.worker?.terminate();if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);this.physicsFinalizeTimer=undefined;this.physicsTargets.clear();const generation=++this.workerGeneration;this.workerNodeOrder=active.map(node=>node.id);
+    this.worker?.terminate();if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);this.physicsFinalizeTimer=undefined;this.physicsTargets.clear();const generation=++this.workerGeneration;this.workerNodeOrder=active.map(node=>node.id);if(initial.startup)this.startupMetrics.workerGenerations++;
     const worker=createPhysicsWorker();this.worker = worker;
     worker.onmessage = (event) => {
       if(event.data.generation!==this.workerGeneration||!event.data.coords||this.physicsFrozen)return;const type=event.data.type as string;if(!["tick","settled","preview","projection","incomplete","burstComplete"].includes(type)||type==="projection"&&(event.data.scaleGeneration??0)<this.nodeScaleGeneration)return;const coords=event.data.coords as Float32Array;
       for(let index=0;index<this.workerNodeOrder.length;index++){const id=this.workerNodeOrder[index],x=coords[index*2],y=coords[index*2+1];if(id===undefined||x===undefined||y===undefined||!Number.isFinite(x)||!Number.isFinite(y)||Math.abs(x)>500000||Math.abs(y)>500000){if(id!==undefined)this.physicsTargets.delete(id);continue}if(type==="projection"){const node=this.views.get(id)?.node;if(node){node.x=x;node.y=y}this.physicsTargets.delete(id)}else this.physicsTargets.set(id,{x,y})}this.motionUntil=type==="projection"?0:performance.now()+180;if(this.activeLenses.size)this.lensGeometryDirty=true;
       if(event.data.type==="tick")this.physicsTicks++;
-      if(type==="settled"||type==="incomplete")this.lastLabelLayout=0;if((type==="settled"||type==="incomplete")&&this.startupPending){this.queueRender();this.finishInitialLayout(generation);return}if(type==="burstComplete"||(type==="settled"||type==="incomplete")&&this.finalizeAfterPhysics){this.lastLabelLayout=0;this.finalizeAfterPhysics=false;this.queueRender();this.finishPhysicsLayout(generation);return}
+      if(type==="settled"||type==="incomplete")this.lastLabelLayout=0;if((type==="settled"||type==="incomplete")&&(this.startupPhase==="building"||this.startupPhase==="settling")){this.startupMetrics.workerTerminalAt=performance.now();this.startupWorkerTerminalGeneration=generation;this.queueRender();if(this.startupPhase==="settling")this.finishInitialLayout(generation);return}if(type==="burstComplete"||(type==="settled"||type==="incomplete")&&this.finalizeAfterPhysics){this.lastLabelLayout=0;this.finalizeAfterPhysics=false;this.queueRender();this.finishPhysicsLayout(generation);return}
       this.queueRender();
     };
     worker.onerror=(event)=>this.failPhysicsWorker(worker,generation,`Physics worker failed: ${event.message||"unknown worker error"}`);
     worker.onmessageerror=()=>this.failPhysicsWorker(worker,generation,"Physics worker returned an unreadable message.");
     const edges=this.model.edges.filter(edge=>ids.has(edge.source)&&ids.has(edge.target));
-    worker.postMessage({ type: "init",generation, nodes: active.map(({id,x,y,visible,folder,degree,radius,family}) => ({id,x,y,visible,folder,degree,radius,family:this.search?"__search":family,isRootIndex:id==="index.md"})), edges, opts: this.plugin.settings.forces, nodeScale:this.plugin.settings.display.nodeSize,heat:initial.heat });
+    worker.postMessage({ type: "init",generation, nodes: active.map(({id,x,y,visible,folder,degree,radius,family}) => ({id,x,y,visible,folder,degree,radius,family:this.search?"__search":family,isRootIndex:id==="index.md"})), edges, opts: this.plugin.settings.forces, nodeScale:this.plugin.settings.display.nodeSize,heat:initial.heat,startup:initial.startup===true });
     if(this.searchRoles.size)worker.postMessage({type:"searchRoles",roles:[...this.searchRoles]});
   }
 
@@ -235,6 +272,12 @@ export class BeautifulGraphView extends ItemView {
   runTuneBurst():void {this.physicsFrozen=false;if(!this.worker)this.startActiveWorker(true,{heat:0});this.worker?.postMessage({type:"tuneBurst",opts:this.plugin.settings.forces})}
 
   private buildScene(): void {
+    this.prepareScene();
+    for (const node of this.model.nodes) { this.visibility.set(node.id,node.visible?1:0); this.createNodeView(node); }
+  }
+
+  private prepareScene():void{
+    if(this.labelCreationFrame)cancelAnimationFrame(this.labelCreationFrame);this.labelCreationFrame=0;this.pendingLabels.clear();
     this.links.clear();
     this.focusLinks.clear();
     this.territoryLayer.removeChildren().forEach(child=>child.destroy({children:true}));this.lensShapes.clear();this.lastTerritoryUpdate=0;this.lensGeometryDirty=true;
@@ -245,35 +288,44 @@ export class BeautifulGraphView extends ItemView {
     this.labelLayer.removeChildren().forEach((child) => child.destroy());
     this.views.clear(); this.adjacency.clear();
     this.minRadius=Math.min(...this.model.nodes.map(n=>n.radius));this.maxRadius=Math.max(...this.model.nodes.map(n=>n.radius));
+    this.rebuildAdjacency();
+  }
+
+  private rebuildAdjacency():void{
+    this.adjacency.clear();
     for (const edge of this.model.edges) {
       if (!this.adjacency.has(edge.source)) this.adjacency.set(edge.source, new Set());
       if (!this.adjacency.has(edge.target)) this.adjacency.set(edge.target, new Set());
       this.adjacency.get(edge.source)?.add(edge.target); this.adjacency.get(edge.target)?.add(edge.source);
     }
-    for (const node of this.model.nodes) { this.visibility.set(node.id,node.visible?1:0); this.createNodeView(node); }
+  }
+
+  private async populateSceneBatched():Promise<void>{
+    const nodes=this.model.nodes,batchSize=96;
+    for(let start=0;start<nodes.length;start+=batchSize){if(this.closed)return;for(const node of nodes.slice(start,start+batchSize)){this.visibility.set(node.id,node.visible?1:0);this.createNodeView(node)}if(start+batchSize<nodes.length)await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()))}
   }
 
   private createNodeView(node: GraphNode): void {
     const glow=new Sprite(this.glowTexture);glow.anchor.set(.5);glow.eventMode="none";this.glowLayer.addChild(glow);
-    const surface=new Sprite(this.getNodeTexture(node.color));surface.anchor.set(.5);surface.eventMode="none";this.nodeLayer.addChild(surface);
-    const body = new Graphics(); body.eventMode = "static"; body.cursor = "pointer";
-    body.on("pointerover", (e) => {if(!this.isPointerOccluded(e.clientX,e.clientY))this.setHover(node)});
-    body.on("pointerout", () => {if(!shouldClearHoverOnPointerOut(this.dragged?.id))return;this.cancelHoverIntent(node);this.clearHover()});
-    body.on("pointerdown", (e) => {if(e.button!==0||e.ctrlKey||this.isPointerOccluded(e.clientX,e.clientY))return;e.stopPropagation();this.beginNodeDrag(node,e.pointerId,e.clientX,e.clientY,e.shiftKey)});
-    body.on("pointertap", (event) => {event.stopPropagation();if(this.isPointerOccluded(event.clientX,event.clientY))return;if(event.ctrlKey){this.openNodeInTab(node);return}if(event.detail>=2){this.openNode(node);return}if(suppressesPostDragTap(performance.now(),this.suppressNodeTapUntil)){this.suppressNodeTapUntil=0;return}this.pinFocus(node,event.shiftKey)});
-    body.on("rightclick", (e) => {if(!this.isPointerOccluded(e.clientX,e.clientY))this.contextMenu(node,e.clientX,e.clientY)});
-    this.nodeLayer.addChild(body);
+    const surface=new Sprite(this.getNodeTexture(node.color));surface.anchor.set(.5);surface.eventMode="static";surface.cursor="pointer";
+    surface.on("pointerover", (e) => {if(!this.isPointerOccluded(e.clientX,e.clientY))this.setHover(node)});
+    surface.on("pointerout", () => {if(!shouldClearHoverOnPointerOut(this.dragged?.id))return;this.cancelHoverIntent(node);this.clearHover()});
+    surface.on("pointerdown", (e) => {if(e.button!==0||e.ctrlKey||this.isPointerOccluded(e.clientX,e.clientY))return;e.stopPropagation();this.beginNodeDrag(node,e.pointerId,e.clientX,e.clientY,e.shiftKey)});
+    surface.on("pointertap", (event) => {event.stopPropagation();if(this.isPointerOccluded(event.clientX,event.clientY))return;if(event.ctrlKey){this.openNodeInTab(node);return}if(event.detail>=2){this.openNode(node);return}if(suppressesPostDragTap(performance.now(),this.suppressNodeTapUntil)){this.suppressNodeTapUntil=0;return}this.pinFocus(node,event.shiftKey)});
+    surface.on("rightclick", (e) => {if(!this.isPointerOccluded(e.clientX,e.clientY))this.contextMenu(node,e.clientX,e.clientY)});this.nodeLayer.addChild(surface);
     let icon:Text|undefined;
-    if (node.icon) {icon=new Text({ text: node.icon, style: new TextStyle({ fontSize: 12,dropShadow:{color:0x000000,alpha:.936,blur:3.6,distance:1.2} }), resolution:Math.min(4,Math.max(2,window.devicePixelRatio*2)) });icon.anchor.set(.5);icon.eventMode="none";icon.roundPixels=true;this.nodeLayer.addChild(icon)}
     let label: Text | undefined,labelBg:Graphics|undefined;
     let leader:Graphics|undefined;
-    if (node.alwaysLabel || node.degree > 2) {({label,labelBg}=this.makeLabel(node));leader=new Graphics();leader.eventMode="none";this.leaderLayer.addChild(leader)}
-    this.views.set(node.id, { node, body, surface, glow, icon,iconRes:icon?.resolution, label, labelBg,leader });
+    if (node.alwaysLabel) {({label,labelBg}=this.makeLabel(node));leader=new Graphics();leader.eventMode="none";this.leaderLayer.addChild(leader)}
+    this.views.set(node.id, { node, surface, glow, icon,iconRes:icon?.resolution, label, labelBg,leader });
   }
+
+  private ensureIcon(view:NodeView):Text|undefined{if(view.icon||!view.node.icon)return view.icon;const icon=new Text({text:view.node.icon,style:new TextStyle({fontSize:12,dropShadow:{color:0x000000,alpha:.936,blur:3.6,distance:1.2}}),resolution:Math.min(4,Math.max(2,window.devicePixelRatio*2))});icon.anchor.set(.5);icon.eventMode="none";icon.roundPixels=true;this.nodeLayer.addChild(icon);view.icon=icon;view.iconRes=icon.resolution;return icon}
 
   private makeLabel(node:GraphNode):{label:Text;labelBg:Graphics}{const labelBg=new Graphics();labelBg.eventMode="none";this.labelLayer.addChild(labelBg);const label=new Text({text:node.label,style:new TextStyle({fontSize:14,fontWeight:"600",fill:0xffffff,dropShadow:{color:0x000000,alpha:.9,blur:3,distance:1.5}})});label.anchor.set(.5);label.eventMode="none";this.labelLayer.addChild(label);this.drawLabelBackground(labelBg,label,node.color);return{label,labelBg}}
   private drawLabelBackground(background:Graphics,label:Text,color:string):void{const bounds=label.getLocalBounds(),w=bounds.width+12,h=bounds.height+6,c=Number.parseInt(color.slice(1),16),radius=Math.min(9,h/2);background.clear().roundRect(-w/2,-h/2,w,h,radius).fill({color:c,alpha:1}).stroke({color:0xffffff,alpha:.58,width:.7}).roundRect(-w/2+2,-h/2+2,w-4,Math.max(2,h*.38),Math.max(2,radius-2)).fill({color:0xffffff,alpha:.22})}
   private ensureLabel(node:GraphNode):void {const view=this.views.get(node.id);if(!view||view.label)return;const made=this.makeLabel(node);view.label=made.label;view.labelBg=made.labelBg;view.leader=new Graphics();view.leader.eventMode="none";this.leaderLayer.addChild(view.leader)}
+  private scheduleLabelCreation(node:GraphNode):void{this.pendingLabels.add(node.id);if(this.labelCreationFrame)return;const create=()=>{if(this.closed){this.labelCreationFrame=0;return}for(const id of [...this.pendingLabels].slice(0,24)){this.pendingLabels.delete(id);const queued=this.views.get(id)?.node;if(queued)this.ensureLabel(queued)}this.renderGraph();this.labelCreationFrame=0;if(this.pendingLabels.size)this.labelCreationFrame=requestAnimationFrame(create)};this.labelCreationFrame=requestAnimationFrame(create)}
   private getLabelMetrics(view:NodeView):{width:number;height:number;radius:number}{if(view.labelMetrics)return view.labelMetrics;const bounds=view.label!.getLocalBounds(),width=bounds.width+12,height=bounds.height+6;return view.labelMetrics={width,height,radius:Math.min(9,height/2)}}
 
   private getNodeTexture(color:string):Texture {const cached=this.nodeTextures.get(color);if(cached)return cached;const canvas=document.createElement("canvas");canvas.width=canvas.height=256;const ctx=canvas.getContext("2d")!,rgb=/^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(color),r=rgb?Number.parseInt(rgb[1]!,16):138,g=rgb?Number.parseInt(rgb[2]!,16):148,b=rgb?Number.parseInt(rgb[3]!,16):166;ctx.save();ctx.beginPath();ctx.arc(128,128,119,0,Math.PI*2);ctx.clip();ctx.fillStyle=`rgb(${r},${g},${b})`;ctx.fillRect(0,0,256,256);const wash=ctx.createLinearGradient(0,8,0,248);wash.addColorStop(0,"rgba(255,255,255,.42)");wash.addColorStop(.42,"rgba(255,255,255,.08)");wash.addColorStop(.7,"rgba(0,0,0,.04)");wash.addColorStop(1,"rgba(0,0,0,.28)");ctx.fillStyle=wash;ctx.fillRect(0,0,256,256);const sheen=ctx.createRadialGradient(78,61,3,82,66,92);sheen.addColorStop(0,"rgba(255,255,255,.72)");sheen.addColorStop(.2,"rgba(255,255,255,.38)");sheen.addColorStop(1,"rgba(255,255,255,0)");ctx.fillStyle=sheen;ctx.fillRect(0,0,190,170);ctx.restore();ctx.beginPath();ctx.arc(128,128,119,0,Math.PI*2);ctx.strokeStyle="rgba(2,7,10,.58)";ctx.lineWidth=5;ctx.stroke();ctx.beginPath();ctx.arc(128,128,114.5,0,Math.PI*2);ctx.strokeStyle="rgba(255,255,255,.42)";ctx.lineWidth=3;ctx.stroke();const texture=Texture.from(canvas);this.nodeTextures.set(color,texture);return texture}
@@ -282,7 +334,7 @@ export class BeautifulGraphView extends ItemView {
   private queueRender(): void {
     this.renderQueued=true;
   }
-  private animatePresentation(deltaMS:number):void {const now=performance.now();let moving=now<this.motionUntil,maxDelta=0;if(moving){const blend=1-Math.exp(-deltaMS/24);for(const node of this.model.nodes){if(node===this.dragged)continue;const target=this.physicsTargets.get(node.id);if(!target)continue;const dx=target.x-node.x,dy=target.y-node.y;maxDelta=Math.max(maxDelta,Math.abs(dx),Math.abs(dy));node.x+=dx*blend;node.y+=dy*blend}moving=maxDelta>.02}if((this.renderQueued||moving)&&now-this.lastGeometryRender>=15){this.renderQueued=false;this.lastGeometryRender=now;this.renderGraph()}}
+  private animatePresentation(deltaMS:number):void {const now=performance.now();let moving=now<this.motionUntil,maxDelta=0;if(moving){const blend=1-Math.exp(-deltaMS/24);for(const node of this.model.nodes){if(node===this.dragged)continue;const target=this.physicsTargets.get(node.id);if(!target)continue;const dx=target.x-node.x,dy=target.y-node.y;maxDelta=Math.max(maxDelta,Math.abs(dx),Math.abs(dy));node.x+=dx*blend;node.y+=dy*blend}moving=maxDelta>.02}const tracking=this.startupPhase==="settling"&&this.startupCameraTracking;if(tracking)this.trackStartupCamera(deltaMS);if((this.renderQueued||moving||tracking)&&now-this.lastGeometryRender>=15){this.renderQueued=false;this.lastGeometryRender=now;this.renderGraph()}}
 
   private renderGraph(): void {
     this.world.position.set(this.offset.x, this.offset.y); this.world.scale.set(this.scale);
@@ -311,19 +363,18 @@ export class BeautifulGraphView extends ItemView {
   }
 
   private updateNodeView(view: NodeView, related: boolean): void {
-    const { node, body, surface, glow:glowSprite, icon, label, labelBg,leader } = view; const role=this.searchRoles.get(node.id),isContext=role==="context",focused=this.isFocusRoot(node.id),color=isContext?0x8a94a6:Number.parseInt(node.color.slice(1), 16); const visibility=this.visibility.get(node.id)??0,focusAlpha=related?1:1-this.focusProgress*.85,lensAlpha=this.activeLenses.size&&!this.lensMembers.has(node.id)?.175:1,roleAlpha=isContext&&!focused?.5:1;
+    const { node, surface, glow:glowSprite } = view; const role=this.searchRoles.get(node.id),isContext=role==="context",focused=this.isFocusRoot(node.id),color=isContext?0x8a94a6:Number.parseInt(node.color.slice(1), 16); const visibility=this.visibility.get(node.id)??0,focusAlpha=related?1:1-this.focusProgress*.85,lensAlpha=this.activeLenses.size&&!this.lensMembers.has(node.id)?.175:1,roleAlpha=isContext&&!focused?.5:1;
     const renderedRadius=isContext?Math.max(this.minRadius*.7,Math.min(node.radius*.55,this.minRadius*1.6)):node.radius,r=renderedRadius*this.plugin.settings.display.nodeSize,radiusT=this.maxRadius===this.minRadius?1:Math.max(0,Math.min(1,(node.radius-this.minRadius)/(this.maxRadius-this.minRadius))),outerFactor=5-3*radiusT,baseGlow=this.maxRadius===this.minRadius?1:.04+.96*radiusT,glowAmount=isContext||lensAlpha<1&&!focused?0:this.plugin.settings.display.glow*baseGlow;
     const styleKey = `${r}`;
     if (view.styleKey !== styleKey) {
-      body.clear().circle(0,0,r).fill({color:0xffffff,alpha:.001});
-      body.hitArea={contains:(x:number,y:number)=>Math.hypot(x,y)<=r+5};
-      if (icon) icon.style.fontSize=r*.9;
+      surface.hitArea={contains:(x:number,y:number)=>Math.hypot(x,y)<=r+5};
+      if (view.icon) view.icon.style.fontSize=r*.9;
       view.styleKey = styleKey;
     }
-    surface.position.set(node.x,node.y);surface.texture=this.getNodeTexture(isContext?"#8A94A6":node.color);surface.tint=0xffffff;surface.width=surface.height=r*2;surface.alpha=visibility*focusAlpha*lensAlpha*roleAlpha;surface.visible=visibility>.01;body.position.set(node.x,node.y); body.alpha=visibility*focusAlpha*lensAlpha*roleAlpha; body.visible=visibility>.01;
+    surface.position.set(node.x,node.y);surface.texture=this.getNodeTexture(isContext?"#8A94A6":node.color);surface.tint=0xffffff;surface.width=surface.height=r*2;surface.alpha=visibility*focusAlpha*lensAlpha*roleAlpha;surface.visible=visibility>.01;
     const glowReach=r*(1+(outerFactor-1)*this.plugin.settings.display.glowSize);glowSprite.position.set(node.x,node.y);glowSprite.tint=color;glowSprite.width=glowSprite.height=glowReach*2;glowSprite.alpha=visibility*focusAlpha*glowAmount;glowSprite.visible=visibility>.01&&glowAmount>0;
-    if(icon)this.updateIconPresentation(view,related,r,isContext,lensAlpha,visibility,focusAlpha);
-    if (label) this.updateLabelPresentation(view,related,r,isContext,lensAlpha,visibility,focusAlpha,focused);
+    if(node.icon&&(node.hub||r*this.scale>8))this.ensureIcon(view);if(view.icon)this.updateIconPresentation(view,related,r,isContext,lensAlpha,visibility,focusAlpha);
+    if(this.startupPhase==="complete"&&!view.label&&node.degree>2&&this.scale>.35&&thresholdFade(r*this.scale,this.plugin.settings.display.textFade)>.001)this.scheduleLabelCreation(node);if(view.label)this.updateLabelPresentation(view,related,r,isContext,lensAlpha,visibility,focusAlpha,focused);
   }
 
   private updateIconPresentation(view:NodeView,related:boolean,r?:number,isContext?:boolean,lensAlpha?:number,visibility?:number,focusAlpha?:number):void {
@@ -331,7 +382,7 @@ export class BeautifulGraphView extends ItemView {
   }
 
   private updateLabelPresentation(view:NodeView,related:boolean,r?:number,isContext?:boolean,lensAlpha?:number,visibility?:number,focusAlpha?:number,focused?:boolean):void {
-    const {node,label,labelBg,leader}=view;if(!label)return;const role=this.searchRoles.get(node.id),context=isContext??role==="context",isFocused=focused??this.isFocusRoot(node.id),lens=lensAlpha??(this.activeLenses.size&&!this.lensMembers.has(node.id)?.175:1),shown=visibility??(this.visibility.get(node.id)??0),focus=focusAlpha??(related?1:1-this.focusProgress*.85),radius=r??((context?Math.max(this.minRadius*.7,Math.min(node.radius*.55,this.minRadius*1.6)):node.radius)*this.plugin.settings.display.nodeSize),screenRadius=radius*this.scale,fade=thresholdFade(screenRadius,this.plugin.settings.display.textFade),persistent=node.alwaysLabel&&!context&&lens===1,focusedFade=isFocused||persistent?1:fade,labelScale=.05+.95*focusedFade,ordinaryLabel=!this.startupPending&&lens===1&&!context&&(persistent||(this.scale>.35&&node.degree>2)),alpha=shown*focus*(isFocused||persistent?1:lens*(.05+.95*fade)),wasVisible=label.visible;
+    const {node,label,labelBg,leader}=view;if(!label)return;const role=this.searchRoles.get(node.id),context=isContext??role==="context",isFocused=focused??this.isFocusRoot(node.id),lens=lensAlpha??(this.activeLenses.size&&!this.lensMembers.has(node.id)?.175:1),shown=visibility??(this.visibility.get(node.id)??0),focus=focusAlpha??(related?1:1-this.focusProgress*.85),radius=r??((context?Math.max(this.minRadius*.7,Math.min(node.radius*.55,this.minRadius*1.6)):node.radius)*this.plugin.settings.display.nodeSize),screenRadius=radius*this.scale,fade=thresholdFade(screenRadius,this.plugin.settings.display.textFade),persistent=node.alwaysLabel&&!context&&lens===1,focusedFade=isFocused||persistent?1:fade,labelScale=.05+.95*focusedFade,ordinaryLabel=this.startupPhase==="complete"&&lens===1&&!context&&(persistent||(this.scale>.35&&node.degree>2)),alpha=shown*focus*(isFocused||persistent?1:lens*(.05+.95*fade)),wasVisible=label.visible;
     label.scale.set(labelScale/this.scale);label.alpha=alpha;label.visible=(isFocused||persistent||fade>.001)&&alpha>.01&&(isFocused||ordinaryLabel);if(labelBg){labelBg.scale.set(labelScale/this.scale);labelBg.alpha=alpha;labelBg.visible=label.visible}if(wasVisible!==label.visible)this.labelLayoutDirty=true;if(leader&&!label.visible)leader.clear();
   }
 
@@ -389,7 +440,7 @@ export class BeautifulGraphView extends ItemView {
   private animateFocus(target:number,done?:()=>void):void {this.focusTarget=target;const token=++this.focusAnimation,start=this.focusProgress,begin=performance.now();const tick=(now:number)=>{if(token!==this.focusAnimation)return;const p=Math.min(1,(now-begin)/110),ease=p*p*(3-2*p);this.focusProgress=start+(target-start)*ease;this.renderFocusFrame();if(p<1)requestAnimationFrame(tick);else done?.()};requestAnimationFrame(tick)}
   private renderFocusFrame():void {const roots=this.activeFocusRoots(),focused=this.focusedNodeIds(roots);for(const view of this.views.values())this.updateNodeView(view,!roots.size||focused.has(view.node.id));this.layoutLabels();this.applyFocusFrame()}
   private applyFocusFrame():void {const active=this.activeFocusRoots().size>0;this.focusBlur.strength=this.focusProgress*1.4;this.scene.filters=this.focusProgress>.01?[this.focusBlur]:[];if(this.pixi)this.scene.filterArea=this.pixi.screen;this.links.alpha=active?1-this.focusProgress*.88:1;this.focusLinks.alpha=active?this.focusProgress:0}
-  private setFocusLayers():void {const focused=this.focusedNodeIds();for(const view of this.views.values()){const crisp=focused.has(view.node.id);(crisp?this.focusGlowLayer:this.glowLayer).addChild(view.glow);if(view.leader)(crisp?this.focusLeaderLayer:this.leaderLayer).addChild(view.leader);(crisp?this.focusNodeLayer:this.nodeLayer).addChild(view.surface);(crisp?this.focusNodeLayer:this.nodeLayer).addChild(view.body);if(view.icon)(crisp?this.focusNodeLayer:this.nodeLayer).addChild(view.icon);if(view.labelBg)(crisp?this.focusLabelLayer:this.labelLayer).addChild(view.labelBg);if(view.label)(crisp?this.focusLabelLayer:this.labelLayer).addChild(view.label)}}
+  private setFocusLayers():void {const focused=this.focusedNodeIds();for(const view of this.views.values()){const crisp=focused.has(view.node.id);(crisp?this.focusGlowLayer:this.glowLayer).addChild(view.glow);if(view.leader)(crisp?this.focusLeaderLayer:this.leaderLayer).addChild(view.leader);(crisp?this.focusNodeLayer:this.nodeLayer).addChild(view.surface);if(view.icon)(crisp?this.focusNodeLayer:this.nodeLayer).addChild(view.icon);if(view.labelBg)(crisp?this.focusLabelLayer:this.labelLayer).addChild(view.labelBg);if(view.label)(crisp?this.focusLabelLayer:this.labelLayer).addChild(view.label)}}
 
   private createToolbar(): void { const bar=this.contentEl.createDiv({cls:"beautiful-graph-toolbar"});bar.createSpan({cls:"beautiful-graph-count",text:`${this.model.nodes.length} Nodes`});const input=bar.createEl("input",{type:"search",placeholder:"Filter Graph…"}),linked=bar.createEl("input",{type:"checkbox",cls:"beautiful-search-linked",attr:{"aria-label":"Show Linked Notes In Search"}});linked.checked=this.plugin.settings.display.showLinkedInSearch;linked.hidden=true;linked.onchange=()=>{this.pushHistory();this.plugin.settings.display.showLinkedInSearch=linked.checked;void this.plugin.persistData();void this.applySearch(input.value)};this.searchInput=input;const update=()=>{linked.hidden=!input.value.trim();if(this.searchTimer)window.clearTimeout(this.searchTimer);this.searchTimer=window.setTimeout(()=>void this.applySearch(input.value),120)};input.addEventListener("input",update);input.addEventListener("keydown",e=>{if(e.key==="Escape"){input.value="";linked.hidden=true;void this.applySearch("")}});const undo=bar.createEl("button",{text:"Undo",cls:"beautiful-history-undo",attr:{"aria-label":"Undo Graph Settings (Ctrl+Z)"}});undo.onclick=()=>this.undoSettings();const redo=bar.createEl("button",{text:"Redo",cls:"beautiful-history-redo",attr:{"aria-label":"Redo Graph Settings (Ctrl+Shift+Z or Ctrl+Y)"}});redo.onclick=()=>this.redoSettings();bar.createEl("button",{text:"Recenter Graph"}).onclick=()=>this.fit(); }
   updateHistoryButtons(canUndo:boolean,canRedo:boolean):void{const undo=this.contentEl.querySelector<HTMLButtonElement>(".beautiful-history-undo"),redo=this.contentEl.querySelector<HTMLButtonElement>(".beautiful-history-redo");if(undo)undo.disabled=!canUndo;if(redo)redo.disabled=!canRedo}
@@ -500,7 +551,7 @@ export class BeautifulGraphView extends ItemView {
   private bindNavigation(host:HTMLElement):void {
     let panning=false,last={x:0,y:0};
     host.oncontextmenu=e=>{if(e.button===1)e.preventDefault()};
-    host.onpointerdown=e=>{if(this.isPointerOccluded(e.clientX,e.clientY))return;if(e.button===0&&!this.dragged)this.unpinFocus();if((e.button===0&&!this.dragged)||e.button===1){e.preventDefault();panning=true;last={x:e.clientX,y:e.clientY};host.setPointerCapture(e.pointerId);host.focus({preventScroll:true})}};
+    host.onpointerdown=e=>{if(this.isPointerOccluded(e.clientX,e.clientY))return;if(e.button===0&&!this.dragged)this.unpinFocus();if((e.button===0&&!this.dragged)||e.button===1){e.preventDefault();this.cancelStartupCameraTracking();panning=true;last={x:e.clientX,y:e.clientY};host.setPointerCapture(e.pointerId);host.focus({preventScroll:true})}};
     host.onpointermove=e=>{
       const rect=host.getBoundingClientRect();
       if(this.dragged&&this.dragState?.pointerId===e.pointerId){panning=false;this.moveNodeDrag(e);return}
@@ -512,8 +563,12 @@ export class BeautifulGraphView extends ItemView {
     host.onpointercancel=e=>{panning=false;this.releaseNode(e.pointerId,true)};
     host.onlostpointercapture=()=>{panning=false};
     host.onpointerleave=()=>{panning=false;if(!this.dragged){this.cancelHoverIntent();this.clearHover()}};
-    host.onwheel=e=>{if(this.isPointerOccluded(e.clientX,e.clientY))return;e.preventDefault();this.clearHoverImmediate();const rect=host.getBoundingClientRect(),px=e.clientX-rect.left,py=e.clientY-rect.top,target=Math.max(.08,Math.min(5,(this.zoomTarget?.scale??this.scale)*Math.exp(-e.deltaY*.001)));const base=this.zoomTarget??{scale:this.scale,x:this.offset.x,y:this.offset.y},gx=(px-base.x)/base.scale,gy=(py-base.y)/base.scale;this.zoomTarget={scale:target,x:px-gx*target,y:py-gy*target};this.animateZoom()};
+    host.onwheel=e=>{if(this.isPointerOccluded(e.clientX,e.clientY))return;e.preventDefault();this.cancelStartupCameraTracking();this.clearHoverImmediate();const rect=host.getBoundingClientRect(),px=e.clientX-rect.left,py=e.clientY-rect.top,target=Math.max(.08,Math.min(5,(this.zoomTarget?.scale??this.scale)*Math.exp(-e.deltaY*.001)));const base=this.zoomTarget??{scale:this.scale,x:this.offset.x,y:this.offset.y},gx=(px-base.x)/base.scale,gy=(py-base.y)/base.scale;this.zoomTarget={scale:target,x:px-gx*target,y:py-gy*target};this.animateZoom()};
   }
+  private cancelStartupCameraTracking():void{if(this.startupPhase==="building"||this.startupPhase==="settling")this.startupCameraTracking=false}
+  private startupCameraTarget():{scale:number;x:number;y:number}|undefined{const bounds=this.visibleBounds();return bounds?fitCamera(bounds,this.cameraViewport()):undefined}
+  private startupCameraResidual():number{const target=this.startupCameraTarget();return target?Math.max(Math.abs(target.scale-this.scale),Math.hypot(target.x-this.offset.x,target.y-this.offset.y)):0}
+  private trackStartupCamera(deltaMS:number):void{const target=this.startupCameraTarget();if(!target)return;const blend=1-Math.exp(-Math.max(1,deltaMS)/80);this.scale+=(target.scale-this.scale)*blend;this.offset.x+=(target.x-this.offset.x)*blend;this.offset.y+=(target.y-this.offset.y)*blend;this.startupMetrics.finalCameraResidual=this.startupCameraResidual();this.applyCameraTransform(deltaMS)}
   private applyCameraTransform(deltaMS=0):void {for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld]){layer.position.set(this.offset.x,this.offset.y);layer.scale.set(this.scale)}const roots=this.activeFocusRoots(),focused=this.focusedNodeIds(roots);for(const view of this.views.values()){const related=!roots.size||focused.has(view.node.id);if(view.icon)this.updateIconPresentation(view,related);if(view.label)this.updateLabelPresentation(view,related)}if(this.zoomAnimating)this.layoutLabels();if(deltaMS>0)this.advanceLabelOffsets(deltaMS);this.positionLabelsAndLeaders()}
   private animateZoom():void {if(this.zoomAnimating)return;this.zoomAnimating=true;let last=performance.now();const step=(now:number)=>{if(!this.zoomTarget){this.zoomAnimating=false;return}const dt=Math.min(50,Math.max(1,now-last));last=now;const t=this.zoomTarget,blend=1-Math.exp(-dt/160);this.scale+=(t.scale-this.scale)*blend;this.offset.x+=(t.x-this.offset.x)*blend;this.offset.y+=(t.y-this.offset.y)*blend;this.applyCameraTransform(dt);if(Math.abs(t.scale-this.scale)>.001||Math.hypot(t.x-this.offset.x,t.y-this.offset.y)>.2)requestAnimationFrame(step);else{this.scale=t.scale;this.offset={x:t.x,y:t.y};this.zoomTarget=undefined;this.zoomAnimating=false;this.lastLabelLayout=0;this.labelLayoutDirty=true;this.renderGraph()}};requestAnimationFrame(step)}
   private setCategoryVisible(category:string,shown:boolean):void {this.pushHistory();this.plugin.settings.categoryVisibility[category]=shown;const changed:string[]=[];for(const node of this.model.nodes)if(node.category===category){const visible=shown&&isPathInFolderScope(node.path,this.folderScope);if(node.visible!==visible)changed.push(node.id);node.visible=visible}this.lensGeometryDirty=true;void this.plugin.persistData();if(this.search){void this.applySearch(this.search)}else{this.startActiveWorker();this.animateNodeVisibility(changed)}this.updateGraphCount();this.createPanels()}
@@ -536,22 +591,31 @@ export class BeautifulGraphView extends ItemView {
   private autoTuneForces():void {this.applyAnalyzedForceProfile();this.runTuneBurst();new Notice("Forces analyzed. Running a bounded layout burst.")}
 
   private scheduleModelRefresh():void {
+    if(this.closed)return;if(this.startupPhase!=="complete"){if(this.startupPhase==="building"||this.startupPhase==="settling")this.pendingModelRefresh=true;return}
     if(this.modelRefreshTimer)window.clearTimeout(this.modelRefreshTimer);
     this.modelRefreshTimer=window.setTimeout(()=>{
-      this.modelRefreshTimer=undefined;this.plugin.data.positions=rankedPositionSnapshot(this.model.nodes,this.plugin.settings.savedNodeCount);this.searchIndex.clear();
-      const next=buildGraphModel(this.app,this.plugin.settings,this.plugin.data.positions);this.plugin.data.positions=prunePositionSnapshot(this.plugin.data.positions,next.nodes.map(node=>node.path));const oldIds=this.model.nodes.map(n=>n.id).sort(),newIds=next.nodes.map(n=>n.id).sort(),edgeKeys=(model:GraphModel)=>model.edges.map(e=>`${e.source}\0${e.target}\0${e.forward}\0${e.reverse}\0${e.relationship}`).sort(),sameTopology=oldIds.length===newIds.length&&oldIds.every((id,i)=>id===newIds[i])&&edgeKeys(this.model).join("\n")===edgeKeys(next).join("\n");
+      if(this.startupPhase!=="complete"||this.closed)return;this.modelRefreshTimer=undefined;this.searchIndex.clear();
+      const next=buildGraphModel(this.app,this.plugin.settings,this.plugin.data.positions);const oldIds=this.model.nodes.map(n=>n.id).sort(),newIds=next.nodes.map(n=>n.id).sort(),edgeKeys=(model:GraphModel)=>model.edges.map(e=>`${e.source}\0${e.target}\0${e.forward}\0${e.reverse}\0${e.relationship}`).sort(),sameTopology=oldIds.length===newIds.length&&oldIds.every((id,i)=>id===newIds[i])&&edgeKeys(this.model).join("\n")===edgeKeys(next).join("\n");
       if(sameTopology){const fresh=new Map(next.nodes.map(n=>[n.id,n]));for(const node of this.model.nodes){const update=fresh.get(node.id);if(!update)continue;const{x,y,...presentation}=update;Object.assign(node,presentation);const view=this.views.get(node.id);if(view?.label&&view.label.text!==node.label){view.label.text=node.label;view.labelMetrics=undefined;if(view.labelBg)this.drawLabelBackground(view.labelBg,view.label,node.color)}if(view?.icon)view.icon.text=node.icon;if(view)view.styleKey=undefined}this.minRadius=Math.min(...this.model.nodes.map(n=>n.radius));this.maxRadius=Math.max(...this.model.nodes.map(n=>n.radius));this.renderGraph()}
-      else{this.model=next;this.rebuild(false,false)}this.createPanels();this.updateBreadcrumb();this.updateGraphCount();
+      else{this.startupMetrics.topologyRebuilds++;this.reconcileTopology(next)}this.createPanels();this.updateBreadcrumb();this.updateGraphCount();
     },120);
   }
+  private reconcileTopology(next:GraphModel):void{
+    const reconciliation=reconcileGraphNodes(this.model.nodes,next.nodes);
+    for(const id of reconciliation.removedIds){const view=this.views.get(id);if(view)this.destroyNodeView(view);this.views.delete(id);this.visibility.delete(id);this.physicsTargets.delete(id);this.pendingLabels.delete(id)}
+    for(const node of reconciliation.nodes){const view=this.views.get(node.id);if(view){view.node=node;view.styleKey=undefined;if(view.label&&view.label.text!==node.label){view.label.text=node.label;view.labelMetrics=undefined;if(view.labelBg)this.drawLabelBackground(view.labelBg,view.label,node.color)}if(view.icon)view.icon.text=node.icon}}
+    for(const node of reconciliation.added){this.visibility.set(node.id,node.visible?1:0);this.createNodeView(node)}
+    this.model={nodes:reconciliation.nodes,edges:next.edges};this.minRadius=Math.min(...this.model.nodes.map(node=>node.radius));this.maxRadius=Math.max(...this.model.nodes.map(node=>node.radius));this.rebuildAdjacency();this.startActiveWorker(true,{heat:1});this.renderGraph();
+  }
+  private destroyNodeView(view:NodeView):void{for(const child of [view.glow,view.surface,view.icon,view.label,view.labelBg,view.leader])child?.destroy()}
   private autoTuneDisplay():void {const count=Math.max(1,this.model.nodes.filter(n=>n.visible).length),area=Math.max(1,this.contentEl.clientWidth*this.contentEl.clientHeight),density=Math.max(.65,Math.min(1.45,Math.sqrt((count/1430)*(2073600/area))));this.plugin.settings.display={...this.plugin.settings.display,textFade:Number(Math.max(2,Math.min(80,DEFAULT_DISPLAY.textFade*Math.sqrt(density))).toFixed(3)),nodeSize:Number(Math.max(.2,Math.min(8,DEFAULT_DISPLAY.nodeSize/Math.sqrt(density))).toFixed(3)),linkThickness:Number(Math.max(.1,Math.min(6,DEFAULT_DISPLAY.linkThickness/Math.sqrt(density))).toFixed(3)),glow:DEFAULT_DISPLAY.glow,glowSize:DEFAULT_DISPLAY.glowSize};this.invalidateNodeStyles();this.updateNodeScale(true);void this.plugin.persistData();this.renderGraph()}
   private beginNodeDrag(node:GraphNode,pointerId:number,clientX:number,clientY:number,additive:boolean):void {const host=this.canvasHost;if(!host)return;this.cancelHoverIntent();this.pendingFocusAdditive=additive;this.dragged=node;this.dragButtons=1;this.dragState=beginDrag(pointerId,{x:clientX,y:clientY},node,host.getBoundingClientRect(),{scale:this.scale,x:this.offset.x,y:this.offset.y});this.ensureLabel(node);this.hovered=node;this.setFocusLayers();this.renderGraph();this.animateFocus(1);try{host.setPointerCapture(pointerId)}catch{/** Window fallbacks retain ownership when capture is unavailable. */}host.focus({preventScroll:true})}
   private releaseNode(pointerId?:number,cancelled=false):void {if(!this.dragged||pointerId!==undefined&&this.dragState?.pointerId!==pointerId)return;const node=this.dragged,moved=this.dragState?.moved===true,captured=this.dragState?.pointerId,host=this.canvasHost,additive=this.pendingFocusAdditive;this.pendingFocusAdditive=false;if(this.dragFrame){cancelAnimationFrame(this.dragFrame);this.dragFrame=0}if(endsPhysicsDrag(moved)){if(this.pendingDrag)this.worker?.postMessage({type:"dragMove",...this.pendingDrag});this.worker?.postMessage({type:"dragEnd",id:node.id})}this.pendingDrag=undefined;this.dragged=undefined;this.dragState=undefined;this.dragButtons=0;if(captured!==undefined&&host?.hasPointerCapture(captured))host.releasePointerCapture(captured);this.suppressNodeTapUntil=performance.now()+500;if(cancelled){this.clearHoverImmediate();return}this.pinFocus(node,moved?false:additive)}
   private cameraViewport():CameraViewport {const width=this.contentEl.clientWidth,height=this.contentEl.clientHeight,host=this.contentEl.getBoundingClientRect(),toolbar=this.contentEl.querySelector<HTMLElement>(".beautiful-graph-toolbar")?.getBoundingClientRect(),insetBottom=toolbar?Math.max(0,height-(toolbar.top-host.top)):0;return{width,height,insetBottom}}
   private focusNode(node:GraphNode):void {const targetScale=Math.max(1,this.scale),center=viewportCenter(this.cameraViewport());this.zoomTarget={scale:targetScale,x:center.x-node.x*targetScale,y:center.y-node.y*targetScale};this.animateZoom();}
-  private visibleBounds():GraphBounds|undefined {const nodes=this.model.nodes.filter(n=>n.visible&&Number.isFinite(n.x)&&Number.isFinite(n.y));if(!nodes.length)return;let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;for(const node of nodes){minX=Math.min(minX,node.x);maxX=Math.max(maxX,node.x);minY=Math.min(minY,node.y);maxY=Math.max(maxY,node.y)}return{minX,maxX,minY,maxY}}
+  private visibleBounds():GraphBounds|undefined {return radiusAwareBounds(this.model.nodes.filter(node=>node.visible).map(node=>({x:node.x,y:node.y,radius:node.radius*this.plugin.settings.display.nodeSize})))}
   private fit(animate=true):void {const bounds=this.visibleBounds();if(!bounds)return;const target=fitCamera(bounds,this.cameraViewport());if(animate){this.zoomTarget=target;this.animateZoom()}else{this.zoomTarget=undefined;this.scale=target.scale;this.offset={x:target.x,y:target.y};this.applyCameraTransform()}}
-  private handleViewportResize():void {const next=this.cameraViewport(),previous=this.lastViewport;this.lastViewport=next;if(!previous||this.startupPending||previous.width<=0||previous.height<=0||next.width<=0||next.height<=0||previous.width===next.width&&previous.height===next.height&&previous.insetBottom===next.insetBottom)return;const bounds=this.visibleBounds();if(!bounds)return;const state=captureResponsiveCamera({scale:this.scale,x:this.offset.x,y:this.offset.y},previous,bounds),camera=restoreResponsiveCamera(state,next,bounds);this.zoomTarget=undefined;this.scale=camera.scale;this.offset={x:camera.x,y:camera.y};this.applyCameraTransform()}
+  private handleViewportResize():void {const next=this.cameraViewport(),previous=this.lastViewport;this.lastViewport=next;if(!previous||this.startupPhase==="building"||this.startupPhase==="settling"||previous.width<=0||previous.height<=0||next.width<=0||next.height<=0||previous.width===next.width&&previous.height===next.height&&previous.insetBottom===next.insetBottom)return;const bounds=this.visibleBounds();if(!bounds)return;const state=captureResponsiveCamera({scale:this.scale,x:this.offset.x,y:this.offset.y},previous,bounds),camera=restoreResponsiveCamera(state,next,bounds);this.zoomTarget=undefined;this.scale=camera.scale;this.offset={x:camera.x,y:camera.y};this.applyCameraTransform()}
   private isPointerOccluded(clientX:number,clientY:number):boolean {const top=document.elementFromPoint(clientX,clientY) as HTMLElement|null;return !!top?.closest(".beautiful-graph-panel,.beautiful-gui-dock,.beautiful-graph-toolbar,.beautiful-graph-breadcrumb,.beautiful-graph-tooltip")}
   private showTooltip(n:GraphNode):void {let tip=this.contentEl.querySelector<HTMLElement>(".beautiful-graph-tooltip");if(!tip)tip=this.contentEl.createDiv({cls:"beautiful-graph-tooltip"});tip.empty();tip.createDiv({cls:"beautiful-tooltip-title",text:n.label});tip.createDiv({cls:"beautiful-tooltip-meta",text:`${n.category} · ${n.degree} connections`});const path=tip.createDiv({cls:"beautiful-tooltip-path",text:formatTooltipPath(n.path)});path.title=this.prettyPath(n.path);if(n.description)tip.createDiv({cls:"beautiful-tooltip-description",text:n.description});tip.show();}
   private prettyPath(path:string):string{return path.replaceAll("_"," ").split("/").map(part=>part.replace(/\b[a-z]/g,c=>c.toUpperCase())).join("  >  ")}

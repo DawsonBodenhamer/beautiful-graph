@@ -224,6 +224,21 @@
     }
   }
 
+  async function runManualOpen() {
+    const { plugin } = context();
+    const adapter = app.vault.adapter;
+    await ensureDirectory(adapter, OUTPUT_ROOT);
+    const runs=[];
+    for(let run=0;run<RUNS;run+=1){
+      const longTasks=[],observer=new PerformanceObserver(list=>{for(const entry of list.getEntries())longTasks.push(entry.duration)});observer.observe({type:"longtask",buffered:false});
+      app.workspace.detachLeavesOfType("beautiful-graph");await new Promise(requestAnimationFrame);const started=performance.now();await plugin.openGraph();
+      const leaf=app.workspace.getLeavesOfType("beautiful-graph").at(-1),view=leaf?.view;if(!view?.getStartupMetrics)throw new Error("Manual-open benchmark could not find startup metrics.");
+      while(view.getStartupMetrics().phase!=="complete"&&performance.now()-started<2000)await new Promise(requestAnimationFrame);observer.disconnect();const metrics=view.getStartupMetrics(),stableMs=(metrics.presentationStableAt??performance.now())-started;
+      runs.push({run:run+1,workload:"manualOpenStartup",stableMs:round(stableMs),longTaskCount:longTasks.length,longTaskMaxMs:round(longTasks.length?Math.max(...longTasks):0),metrics,passed:metrics.phase==="complete"&&stableMs<=1000&&longTasks.every(duration=>duration<=50)&&metrics.workerGenerations===1&&metrics.topologyRebuilds===0&&metrics.firstNodeCount===metrics.finalNodeCount});await sleep(250);
+    }
+    const report={schema:1,capturedAt:nowIso(),protocol:{runs:RUNS,stableTargetMs:1000,longTaskTargetMs:50},runs};await adapter.write(`${OUTPUT_ROOT}/manual-open.json`,`${JSON.stringify(report,null,2)}\n`);return report;
+  }
+
   async function waitFor(predicate, timeoutMs = 2_000) {
     const started = performance.now();
     while (performance.now() - started < timeoutMs) {
@@ -282,5 +297,5 @@
     return result;
   }
 
-  global.beautifulGraphBenchmark = Object.freeze({ run, runRapidDrag, runLiveBatch, fixture: () => fixture(context().plugin, context().view) });
+  global.beautifulGraphBenchmark = Object.freeze({ run, runManualOpen, runRapidDrag, runLiveBatch, fixture: () => fixture(context().plugin, context().view) });
 })(window);

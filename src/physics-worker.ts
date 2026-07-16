@@ -20,7 +20,7 @@ export function createPhysicsWorkerSource():string {
     onmessage=e=>{const m=e.data;
       if(m.type==='init'){
         generation=m.generation||0;nodes=m.nodes.map((n,index)=>{const x=Number.isFinite(n.x)?n.x:0,y=Number.isFinite(n.y)?n.y:0;return{...n,x,y,lastX:x,lastY:y,index,vx:0,vy:0,fx:null,fy:null}});edges=m.edges;opts=m.opts;nodeScale=Number.isFinite(m.nodeScale)?Math.max(0,m.nodeScale):1;routeSides=new Map();rebuildTopology();stepNo=0;publishStep=0;
-        const heat=m.heat??1;if(heat>0)run(heat);else publish('settled');
+        const heat=m.heat??1;if(heat>0)run(heat,m.startup===true);else publish('settled');
       }else if(m.type==='forces'){opts=m.opts;run(1)}
       else if(m.type==='tuneBurst'){opts=m.opts||opts;runTuneBurst()}
       else if(m.type==='searchRoles'){searchRoles=new Map(m.roles);run(.75)}
@@ -32,7 +32,7 @@ export function createPhysicsWorkerSource():string {
     };
     function publish(type,extra={}){const coords=new Float32Array(nodes.length*2);for(const n of nodes){coords[n.index*2]=Number.isFinite(n.x)?n.x:n.lastX;coords[n.index*2+1]=Number.isFinite(n.y)?n.y:n.lastY}postMessage({type,generation,coords,...extra},[coords.buffer])}
     function stopTimer(){if(timer)clearInterval(timer);timer=undefined}
-    function run(heat){alpha=Math.max(alpha,heat);quiet=0;tuneFrames=0;normalFrames=240;stopTimer();timer=setInterval(()=>{let energy=0;for(let i=0;i<4;i++)energy=step(i===3);if(publishStep++%2===0)publish('tick');alpha*=.97**2;normalFrames--;if(normalFrames%12===0){quiet=energy<.008?quiet+1:0;if(quiet<2)alpha=Math.max(alpha,heat)}if(quiet>=2||normalFrames===0){const type=quiet>=2?'settled':'incomplete';stopTimer();publish(type)}},16)}
+    function run(heat,startup=false){alpha=Math.max(alpha,heat);quiet=0;tuneFrames=0;normalFrames=startup?38:75;const budget=startup?600:1200,started=performance.now();stopTimer();timer=setInterval(()=>{const callbackStarted=performance.now();let energy=0,substeps=0;do{energy=step(true);substeps++}while(substeps<8&&performance.now()-callbackStarted<8);publishStep++;publish('tick',{substeps});alpha*=.97**Math.max(2,substeps/2);normalFrames--;quiet=energy<.008?quiet+1:0;if(quiet>=2||performance.now()-started>=budget||normalFrames===0){const type=quiet>=2?'settled':'incomplete';stopTimer();publish(type,{elapsed:performance.now()-started})}},16)}
     function runTuneBurst(){stopTimer();alpha=1;quiet=0;tuneFrames=0;tuneSubsteps=0;tuneQuiet=0;timer=setInterval(()=>{let energy=0;for(let i=0;i<8;i++)energy=step(i===7);tuneFrames++;tuneSubsteps+=8;publish('tick',{tune:true,frame:tuneFrames,substeps:tuneSubsteps});alpha*=.97**4;if(tuneFrames%12===0){tuneQuiet=energy<.008?tuneQuiet+1:0;if(tuneQuiet<2)alpha=1}if(tuneQuiet>=2||tuneFrames>=240){stopTimer();publish('burstComplete',{substeps:tuneSubsteps,converged:tuneQuiet>=2})}},16)}
     function rebuildTopology(){adjacency=new Map(nodes.map(n=>[n.id,[]]));for(const e of edges){if(adjacency.has(e.source)&&adjacency.has(e.target)){adjacency.get(e.source).push(e.target);adjacency.get(e.target).push(e.source)}}familyComponentById=deriveFamilyComponents(nodes,edges)}
     function hashAngle(value){let h=2166136261;for(let i=0;i<value.length;i++)h=Math.imul(h^value.charCodeAt(i),16777619);return((h>>>0)/4294967296)*Math.PI*2}

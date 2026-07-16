@@ -1,6 +1,13 @@
 export interface CameraViewport { width:number; height:number; insetTop?:number; insetRight?:number; insetBottom?:number; insetLeft?:number }
 export interface CameraTransform { scale:number; x:number; y:number }
 export interface GraphBounds { minX:number; maxX:number; minY:number; maxY:number }
+
+export function radiusAwareBounds(nodes:ReadonlyArray<{x:number;y:number;radius:number}>):GraphBounds|undefined{
+  const finite=nodes.filter(node=>Number.isFinite(node.x)&&Number.isFinite(node.y)&&Number.isFinite(node.radius));if(!finite.length)return;
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  for(const node of finite){const radius=Math.max(0,node.radius);minX=Math.min(minX,node.x-radius);maxX=Math.max(maxX,node.x+radius);minY=Math.min(minY,node.y-radius);maxY=Math.max(maxY,node.y+radius)}
+  return{minX,maxX,minY,maxY};
+}
 export interface ResponsiveCameraState { centerX:number; centerY:number; zoomRatio:number }
 
 export function viewportCenter(viewport:CameraViewport):{x:number;y:number;width:number;height:number} {
