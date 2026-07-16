@@ -4,6 +4,7 @@ export interface PositionedPath { path:string; x:number; y:number }
 export interface RankedPositionedPath extends PositionedPath { radius:number; degree:number }
 export interface FamilyPath { path:string; family:string }
 export interface SeedObstacle extends GraphPoint { radius:number }
+export interface FamilyEdge { source:string; target:string }
 
 export function activeSavedPoints(positions:Record<string,GraphPoint>,paths:Iterable<string>):GraphPoint[] {
   const result:GraphPoint[]=[];
@@ -50,6 +51,21 @@ export function distributedFamilyAnchors(families:Iterable<string>,saved:Readonl
     result.set(missing[index]!,best!);occupied.push(best!);
   }
   return result;
+}
+
+export function connectedFamilyAnchors(nodes:Iterable<FamilyPath>,edges:Iterable<FamilyEdge>,saved:ReadonlyMap<string,GraphPoint>):Map<string,GraphPoint> {
+  const familyByPath=new Map([...nodes].map(node=>[node.path,node.family])),neighbors=new Map<string,Map<string,number>>();
+  for(const edge of edges){const a=familyByPath.get(edge.source),b=familyByPath.get(edge.target);if(!a||!b||a===b)continue;const add=(from:string,to:string)=>{const links=neighbors.get(from)??new Map<string,number>();links.set(to,(links.get(to)??0)+1);neighbors.set(from,links)};add(a,b);add(b,a)}
+  const result=new Map(saved),families=[...new Set(familyByPath.values())].sort();
+  for(const family of families){if(result.has(family))continue;const queue=[{family,distance:0}],visited=new Set([family]),found:{point:GraphPoint;weight:number}[]=[];let nearest=Infinity;
+    while(queue.length){const current=queue.shift()!;if(current.distance>nearest)break;const anchor=saved.get(current.family);if(anchor&&current.distance>0){nearest=current.distance;found.push({point:anchor,weight:1/current.distance});continue}for(const next of [...(neighbors.get(current.family)?.keys()??[])].sort())if(!visited.has(next)){visited.add(next);queue.push({family:next,distance:current.distance+1})}}
+    if(found.length){const weight=found.reduce((sum,item)=>sum+item.weight,0);result.set(family,{x:found.reduce((sum,item)=>sum+item.point.x*item.weight,0)/weight,y:found.reduce((sum,item)=>sum+item.point.y*item.weight,0)/weight})}
+  }
+  return result;
+}
+
+export function normalizeSeedEnvelope<T extends GraphPoint>(points:Iterable<T>,center:GraphPoint,targetSpan:number):number {
+  const values=[...points].filter(point=>Number.isFinite(point.x)&&Number.isFinite(point.y));if(values.length<2)return 1;const span=Math.max(Math.max(...values.map(point=>point.x))-Math.min(...values.map(point=>point.x)),Math.max(...values.map(point=>point.y))-Math.min(...values.map(point=>point.y))),target=Math.max(100,targetSpan);if(span<=0)return 1;const scale=target/span;if(scale>=.85&&scale<=1.15)return 1;for(const point of values){point.x=center.x+(point.x-center.x)*scale;point.y=center.y+(point.y-center.y)*scale}return scale;
 }
 
 export function familySeedPosition(path:string,index:number,family:string,anchors:ReadonlyMap<string,GraphPoint>,fallback:GraphPoint,spacing=12,obstacles:ReadonlyArray<SeedObstacle>=[],radius=0):GraphPoint {

@@ -5,7 +5,7 @@ import { createPhysicsWorkerSource } from "../src/physics-worker.ts";
 
 const opts={center:1.2,repel:1,link:.04,distance:360,curvature:0,siblingLinkForce:1,rootLinkForce:1};
 function harness(source=createPhysicsWorkerSource()){
-  const messages:Array<{type:string;coords:Float32Array;substeps?:number;converged?:boolean}>=[];let callback:(()=>void)|undefined,starts=0,clears=0;
+  const messages:Array<{type:string;coords:Float32Array;substeps?:number;converged?:boolean;reason?:string;probes?:number;p95Displacement?:number;familyDrift?:number;overlap?:number}>=[];let callback:(()=>void)|undefined,starts=0,clears=0;
   const factory=new Function("postMessage","setInterval","clearInterval",`${source}; return onmessage;`) as (post:(message:{type:string;coords:Float32Array;substeps?:number})=>void,setIntervalFn:(next:()=>void)=>number,clearIntervalFn:()=>void)=>((event:{data:unknown})=>void);
   const handler=factory(message=>messages.push(message),next=>{callback=next;starts++;return starts},()=>{callback=undefined;clears++});
   return{messages,handler,get callback(){return callback},get starts(){return starts},get clears(){return clears}};
@@ -15,18 +15,18 @@ function drain(worker:ReturnType<typeof harness>,limit=240):number {let frames=0
 
 test("generated worker source initializes and publishes cold coordinates",()=>{
   const worker=harness();worker.handler({data:{type:"init",generation:7,nodes:[{id:"a",x:0,y:0,folder:"f",family:"folder:f",degree:1,radius:4,visible:true},{id:"b",x:10,y:0,folder:"f",family:"folder:f",degree:1,radius:4,visible:true}],edges:[{source:"a",target:"b",relationship:"cross"}],opts,nodeScale:1,heat:0}});
-  const result=worker.messages.at(-1)!;assert.equal(result.type,"settled");assert.deepEqual([...result.coords],[0,0,10,0]);
+  const result=worker.messages.at(-1)!;assert.equal(result.type,"converged");assert.equal(result.reason,"converged");assert.deepEqual([...result.coords],[0,0,10,0]);
 });
 
-test("ordinary layout terminates within the 600ms and 38-callback startup budget",()=>{
+test("startup uses probe-based convergence and reports distinct terminal diagnostics",()=>{
   const nodes=Array.from({length:16},(_,index)=>({id:`${index<8?"a":"b"}${index%8}`,x:(index%4)*2,y:Math.floor(index%8/4)*2,folder:index<8?"a":"b",family:index<8?"a":"b",degree:index%8===0||index%8===7?1:2,radius:4,visible:true})),edges=nodes.filter((_,index)=>index%8!==7).map((node,index)=>({source:node.id,target:nodes[index+1]!.id,relationship:"cross"}));
   const worker=harness();worker.handler({data:{type:"init",generation:1,nodes,edges,opts,nodeScale:1,heat:1,startup:true}});const frames=drain(worker),terminal=worker.messages.at(-1)!,coords=[...terminal.coords],center=(start:number)=>{let x=0,y=0;for(let index=start;index<start+8;index++){x+=coords[index*2]!;y+=coords[index*2+1]!}return{x:x/8,y:y/8}},a=center(0),b=center(8);
-  assert.ok(["settled","incomplete"].includes(terminal.type));assert.ok(frames<=38);assert.ok(worker.messages.filter(message=>message.type==="tick").length<=38);assert.ok(Math.hypot(a.x-b.x,a.y-b.y)>25,"ordinary startup should separate major families without a tune burst");
+  assert.ok(["converged","deadline"].includes(terminal.type));assert.equal(terminal.reason,terminal.type);assert.ok(frames<=200);assert.ok((terminal.probes??0)>0);assert.ok(Number.isFinite(terminal.p95Displacement));assert.ok(Number.isFinite(terminal.familyDrift));assert.ok(Number.isFinite(terminal.overlap));assert.ok(Math.hypot(a.x-b.x,a.y-b.y)>25,"startup should separate major families without a tune burst");
 });
 
-test("tune burst runs repeated 96-substep phases until convergence or its bounded cap",()=>{
+test("tune burst uses the same repeated 96-substep convergence probes",()=>{
   const worker=harness();worker.handler({data:{type:"init",generation:1,nodes:[{id:"a",x:0,y:0,folder:"f",family:"folder:f",degree:0,radius:4,visible:true}],edges:[],opts,nodeScale:1,heat:0}});worker.handler({data:{type:"tuneBurst",opts}});
-  const frames=drain(worker);assert.equal(worker.callback,undefined);const terminal=worker.messages.at(-1)!;assert.equal(terminal.type,"burstComplete");assert.equal(terminal.substeps,frames*8);assert.ok((terminal.substeps??0)>=192);assert.ok((terminal.substeps??0)<=1920);
+  const frames=drain(worker);assert.equal(worker.callback,undefined);const terminal=worker.messages.at(-1)!;assert.equal(terminal.type,"burstComplete");assert.equal(terminal.reason,"converged");assert.equal(terminal.substeps,frames*8);assert.ok((terminal.substeps??0)>=192);assert.ok((terminal.substeps??0)<=4096);assert.ok((terminal.probes??0)>=2);
 });
 
 test("repeated tune request reheats and restarts the bounded budget",()=>{
