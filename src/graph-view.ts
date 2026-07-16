@@ -53,7 +53,7 @@ type StartupMetrics={
   firstPaintAt?:number;
   maxFrameGap?:number;
   postGapP95Jump?:number;
-  convergenceReason?:"converged"|"deadline"|"worker-error";
+  convergenceReason?:"converged"|"worker-error";
   residuals?:{p95Displacement:number;familyDrift:number;overlap:number;substeps:number;probes:number;elapsed:number};
 };
 export class BeautifulGraphView extends ItemView {
@@ -250,13 +250,13 @@ export class BeautifulGraphView extends ItemView {
     if(this.startupPhase==="building"||this.startupPhase==="prepared"||this.startupPhase==="settling"){this.degradeStartup("worker-error");return}
     this.renderGraph();new Notice(`${reason} The last valid layout was preserved.`);
   }
-  private finishInitialLayout(generation:number,reason:"converged"|"deadline",metrics:Record<string,number>):void {
-    if(this.startupPhase!=="settling")return;this.finishPresentationTargets(generation,()=>{if(generation!==this.workerGeneration||this.startupPhase!=="settling")return;if(reason==="converged")this.completeStartup(metrics);else this.degradeStartup("deadline",metrics)});
+  private finishInitialLayout(generation:number,metrics:Record<string,number>):void {
+    if(this.startupPhase!=="settling")return;this.finishPresentationTargets(generation,()=>{if(generation!==this.workerGeneration||this.startupPhase!=="settling")return;this.completeStartup(metrics)});
   }
 
-  private recordTerminalMetrics(reason:"converged"|"deadline"|"worker-error",metrics:Record<string,number>={}):void{this.startupMetrics.convergenceReason=reason;this.startupMetrics.residuals={p95Displacement:metrics.p95Displacement??0,familyDrift:metrics.familyDrift??0,overlap:metrics.overlap??0,substeps:metrics.substeps??0,probes:metrics.probes??0,elapsed:metrics.elapsed??0};this.startupMetrics.cameraScaleDrift=this.startupMetrics.initialCameraScale?Math.abs(this.scale/this.startupMetrics.initialCameraScale-1):0}
+  private recordTerminalMetrics(reason:"converged"|"worker-error",metrics:Record<string,number>={}):void{this.startupMetrics.convergenceReason=reason;this.startupMetrics.residuals={p95Displacement:metrics.p95Displacement??0,familyDrift:metrics.familyDrift??0,overlap:metrics.overlap??0,substeps:metrics.substeps??0,probes:metrics.probes??0,elapsed:metrics.elapsed??0};this.startupMetrics.cameraScaleDrift=this.startupMetrics.initialCameraScale?Math.abs(this.scale/this.startupMetrics.initialCameraScale-1):0}
   private completeStartup(metrics:Record<string,number>):void{const now=performance.now();this.recordTerminalMetrics("converged",metrics);this.setStartupPhase("complete");this.startupMetrics.presentationStableAt=now;this.startupMetrics.cameraStableAt=now;this.startupMetrics.finalCameraResidual=this.startupCameraResidual();this.plugin.markLayoutCurrent();this.savePositions();this.renderGraph();if(this.pendingModelRefresh){this.pendingModelRefresh=false;this.scheduleModelRefresh()}}
-  private degradeStartup(reason:"deadline"|"worker-error",metrics:Record<string,number>={}):void{const now=performance.now();this.recordTerminalMetrics(reason,metrics);this.setStartupPhase("degraded");this.startupMetrics.presentationStableAt=now;this.startupMetrics.cameraStableAt=now;this.startupMetrics.finalCameraResidual=this.startupCameraResidual();this.applyPhysicsTargets();this.renderGraph();new Notice(reason==="deadline"?"Graph startup reached its equilibrium deadline. Analyze & Tune can continue this layout.":"Graph startup degraded after a physics worker error. Saved anchors were preserved.");if(this.pendingModelRefresh){this.pendingModelRefresh=false;this.scheduleModelRefresh()}}
+  private degradeStartup(reason:"worker-error",metrics:Record<string,number>={}):void{const now=performance.now();this.recordTerminalMetrics(reason,metrics);this.setStartupPhase("degraded");this.startupMetrics.presentationStableAt=now;this.startupMetrics.cameraStableAt=now;this.startupMetrics.finalCameraResidual=this.startupCameraResidual();this.applyPhysicsTargets();this.renderGraph();new Notice("Graph startup degraded after a physics worker error. Saved anchors were preserved.");if(this.pendingModelRefresh){this.pendingModelRefresh=false;this.scheduleModelRefresh()}}
 
   private finishPhysicsLayout(generation:number,metrics:Record<string,number>):void {
     this.finishPresentationTargets(generation,()=>{if(generation!==this.workerGeneration)return;if(metrics.converged){if(this.startupPhase==="degraded"){this.recordTerminalMetrics("converged",metrics);this.setStartupPhase("complete");this.startupMetrics.presentationStableAt=performance.now();this.plugin.markLayoutCurrent()}this.savePositions()}this.renderGraph()});
@@ -271,7 +271,7 @@ export class BeautifulGraphView extends ItemView {
       if(event.data.generation!==this.workerGeneration||!event.data.coords||this.physicsFrozen)return;const type=event.data.type as string;if(!["tick","converged","deadline","preview","projection","burstComplete"].includes(type)||type==="projection"&&(event.data.scaleGeneration??0)<this.nodeScaleGeneration)return;const coords=event.data.coords as Float32Array;
       for(let index=0;index<this.workerNodeOrder.length;index++){const id=this.workerNodeOrder[index],x=coords[index*2],y=coords[index*2+1];if(id===undefined||x===undefined||y===undefined||!Number.isFinite(x)||!Number.isFinite(y)||Math.abs(x)>500000||Math.abs(y)>500000){if(id!==undefined)this.physicsTargets.delete(id);continue}if(type==="projection"){const node=this.views.get(id)?.node;if(node){node.x=x;node.y=y}this.physicsTargets.delete(id)}else this.physicsTargets.set(id,{x,y})}this.motionUntil=type==="projection"?0:performance.now()+180;if(this.activeLenses.size)this.lensGeometryDirty=true;
       if(event.data.type==="tick")this.physicsTicks++;
-      if(type==="converged"||type==="deadline")this.lastLabelLayout=0;if((type==="converged"||type==="deadline")&&this.startupPhase==="settling"){this.startupMetrics.workerTerminalAt=performance.now();this.queueRender();this.finishInitialLayout(generation,type,event.data);return}if(type==="burstComplete"||(type==="converged"||type==="deadline")&&this.finalizeAfterPhysics){this.lastLabelLayout=0;this.finalizeAfterPhysics=false;this.queueRender();this.finishPhysicsLayout(generation,event.data);return}
+      if(type==="converged"||type==="deadline")this.lastLabelLayout=0;if(type==="converged"&&this.startupPhase==="settling"){this.startupMetrics.workerTerminalAt=performance.now();this.queueRender();this.finishInitialLayout(generation,event.data);return}if(type==="burstComplete"||(type==="converged"||type==="deadline")&&this.finalizeAfterPhysics){this.lastLabelLayout=0;this.finalizeAfterPhysics=false;this.queueRender();this.finishPhysicsLayout(generation,event.data);return}
       this.queueRender();
     };
     worker.onerror=(event)=>this.failPhysicsWorker(worker,generation,`Physics worker failed: ${event.message||"unknown worker error"}`);

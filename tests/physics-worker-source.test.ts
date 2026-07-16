@@ -18,11 +18,12 @@ test("generated worker source initializes and publishes cold coordinates",()=>{
   const result=worker.messages.at(-1)!;assert.equal(result.type,"converged");assert.equal(result.reason,"converged");assert.deepEqual([...result.coords],[0,0,10,0]);
 });
 
-test("startup uses probe-based convergence and reports distinct terminal diagnostics",()=>{
-  const nodes=Array.from({length:16},(_,index)=>({id:`${index<8?"a":"b"}${index%8}`,x:(index%4)*2,y:Math.floor(index%8/4)*2,folder:index<8?"a":"b",family:index<8?"a":"b",degree:index%8===0||index%8===7?1:2,radius:4,visible:true})),edges=nodes.filter((_,index)=>index%8!==7).map((node,index)=>({source:node.id,target:nodes[index+1]!.id,relationship:"cross"}));
-  const worker=harness();worker.handler({data:{type:"init",generation:1,nodes,edges,opts,nodeScale:1,heat:1,startup:true}});const frames=drain(worker),terminal=worker.messages.at(-1)!,coords=[...terminal.coords],center=(start:number)=>{let x=0,y=0;for(let index=start;index<start+8;index++){x+=coords[index*2]!;y+=coords[index*2+1]!}return{x:x/8,y:y/8}},a=center(0),b=center(8);
-  assert.ok(["converged","deadline"].includes(terminal.type));assert.equal(terminal.reason,terminal.type);assert.ok(frames<=200);assert.ok((terminal.probes??0)>0);assert.ok(Number.isFinite(terminal.p95Displacement));assert.ok(Number.isFinite(terminal.familyDrift));assert.ok(Number.isFinite(terminal.overlap));assert.ok(Math.hypot(a.x-b.x,a.y-b.y)>25,"startup should separate major families without a tune burst");
+test("startup terminates only after two successful equilibrium probes",()=>{
+  const worker=harness();worker.handler({data:{type:"init",generation:1,nodes:[{id:"a",x:0,y:0,folder:"f",family:"f",degree:0,radius:4,visible:true}],edges:[],opts,nodeScale:1,heat:1,startup:true}});const frames=drain(worker),terminal=worker.messages.at(-1)!;
+  assert.equal(terminal.type,"converged");assert.equal(terminal.reason,"converged");assert.ok(frames>=24);assert.ok((terminal.probes??0)>=2);assert.ok((terminal.p95Displacement??Infinity)<=.25);assert.ok((terminal.familyDrift??Infinity)<=.5);assert.ok((terminal.overlap??Infinity)<=.5);
 });
+
+test("startup remains active beyond its former callback and substep caps",()=>{const nodes=Array.from({length:16},(_,index)=>({id:`${index<8?"a":"b"}${index%8}`,x:(index%4)*2,y:Math.floor(index%8/4)*2,folder:index<8?"a":"b",family:index<8?"a":"b",degree:index%8===0||index%8===7?1:2,radius:4,visible:true})),edges=nodes.filter((_,index)=>index%8!==7).map((node,index)=>({source:node.id,target:nodes[index+1]!.id,relationship:"cross"})),worker=harness();worker.handler({data:{type:"init",generation:1,nodes,edges,opts,nodeScale:1,heat:1,startup:true}});drain(worker,240);assert.notEqual(worker.callback,undefined);assert.notEqual(worker.messages.at(-1)?.type,"deadline");assert.match(createPhysicsWorkerSource(),/maxSubsteps=mode==='startup'\?Infinity/);assert.match(createPhysicsWorkerSource(),/expired=mode!==\'startup\'/)});
 
 test("tune burst uses the same repeated 96-substep convergence probes",()=>{
   const worker=harness();worker.handler({data:{type:"init",generation:1,nodes:[{id:"a",x:0,y:0,folder:"f",family:"folder:f",degree:0,radius:4,visible:true}],edges:[],opts,nodeScale:1,heat:0}});worker.handler({data:{type:"tuneBurst",opts}});
