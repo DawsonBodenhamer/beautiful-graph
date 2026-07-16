@@ -13,8 +13,10 @@ export function familyComponentIds(nodes:FamilyNode[],edges:ForceEdge[]):Map<str
 }
 
 export function linkSpringImpulse(source:LinkPoint,target:LinkPoint,restLength:number,strength:number,multiplier:number,alpha:number):LinkImpulse {
-  const dx=target.x+(target.vx??0)-source.x-(source.vx??0),dy=target.y+(target.vy??0)-source.y-(source.vy??0),distance=Math.hypot(dx,dy)||1;
+  const dx=target.x-source.x,dy=target.y-source.y,distance=Math.hypot(dx,dy)||1;
   if(multiplier<=0||strength<=0||alpha<=0)return{source:{x:0,y:0},target:{x:0,y:0},distance,magnitude:0};
-  const magnitude=Math.max(-8,Math.min(8,(distance-restLength)*.8*strength*multiplier*alpha)),nx=dx/distance,ny=dy/distance,sourceDegree=Math.max(1,source.degree??1),targetDegree=Math.max(1,target.degree??1),sum=sourceDegree+targetDegree,sourceWeight=targetDegree/sum,targetWeight=sourceDegree/sum;
+  const nx=dx/distance,ny=dy/distance,relativeVelocity=((target.vx??0)-(source.vx??0))*nx+((target.vy??0)-(source.vy??0))*ny;
+  const stiffness=1-Math.exp(-.8*strength*multiplier*alpha),damping=Math.min(1,2*Math.sqrt(stiffness));
+  const magnitude=Math.max(-8,Math.min(8,(distance-restLength)*stiffness+relativeVelocity*damping)),sourceDegree=Math.max(1,source.degree??1),targetDegree=Math.max(1,target.degree??1),sum=sourceDegree+targetDegree,sourceWeight=targetDegree/sum,targetWeight=sourceDegree/sum;
   return{source:{x:nx*magnitude*sourceWeight,y:ny*magnitude*sourceWeight},target:{x:-nx*magnitude*targetWeight,y:-ny*magnitude*targetWeight},distance,magnitude};
 }
