@@ -22,7 +22,7 @@ import { expandedFocusIds, toggledFocusRoots } from "./focus-selection";
 import { interpolateLabelOffset, labelScreenPosition } from "./label-layout";
 import { relaxLabelCollisions } from "./label-collision";
 import { orphanAllowed, thresholdFade } from "./presentation";
-import { admitStartup } from "./startup-admission";
+import { admitStartup, metadataGraphReady } from "./startup-admission";
 import { reconcileGraphNodes } from "./graph-reconcile";
 
 export const BEAUTIFUL_GRAPH_VIEW = "beautiful-graph";
@@ -196,7 +196,8 @@ export class BeautifulGraphView extends ItemView {
     this.createGuiDock();
     this.bindNavigation(canvasHost);
     syncTicker();
-    this.cancelStartupAdmission=admitStartup(this.app.workspace.layoutReady,ready=>this.app.workspace.onLayoutReady(ready),()=>{if(!this.closed&&this.startupPhase==="waiting")void this.beginStartup()});
+    const markdownPaths=this.app.vault.getMarkdownFiles().map(file=>file.path),metadataReady=metadataGraphReady(markdownPaths,this.app.metadataCache.resolvedLinks,this.app.metadataCache.unresolvedLinks);
+    this.cancelStartupAdmission=admitStartup(this.app.workspace.layoutReady,ready=>this.app.workspace.onLayoutReady(ready),metadataReady,ready=>{this.registerEvent(this.app.metadataCache.on("resolved",ready))},()=>{if(!this.closed&&this.startupPhase==="waiting")void this.beginStartup()});
   }
 
   async onClose(): Promise<void> { this.closed=true;this.cancelStartupAdmission?.();const save=this.startupPhase==="complete";this.setStartupPhase("cancelled");this.workerGeneration++;this.plugin.unregisterGraph(this);this.panelResizeObserver?.disconnect();if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);if(this.nodeScaleFrame)cancelAnimationFrame(this.nodeScaleFrame);if(this.labelCreationFrame)cancelAnimationFrame(this.labelCreationFrame);if(this.modelRefreshTimer)window.clearTimeout(this.modelRefreshTimer);if(this.searchTimer)window.clearTimeout(this.searchTimer);for(const timer of this.folderTapTimers.values())window.clearTimeout(timer);this.cancelHoverIntent();if(save&&this.model.nodes.length)this.savePositions(); this.worker?.terminate(); this.pixi?.destroy(true);for(const texture of this.nodeTextures.values())texture.destroy(true);this.nodeTextures.clear(); }
@@ -206,6 +207,7 @@ export class BeautifulGraphView extends ItemView {
     if(this.listenersInstalled)return;this.listenersInstalled=true;
     this.registerEvent(this.app.metadataCache.on("changed",()=>this.scheduleModelRefresh()));
     this.registerEvent(this.app.metadataCache.on("resolve",()=>this.scheduleModelRefresh()));
+    this.registerEvent(this.app.metadataCache.on("resolved",()=>this.scheduleModelRefresh()));
     this.registerEvent(this.app.vault.on("create",()=>this.scheduleModelRefresh()));
     this.registerEvent(this.app.vault.on("delete",()=>this.scheduleModelRefresh()));
     this.registerEvent(this.app.vault.on("rename",()=>this.scheduleModelRefresh()));
