@@ -54,6 +54,7 @@ type StartupMetrics={
   cameraStableAt?:number;
   finalCameraResidual?:number;
   initialCameraScale?:number;
+  initialCameraOccupancy?:number;
   cameraScaleDrift?:number;
   workerStartedAt?:number;
   firstPaintAt?:number;
@@ -228,7 +229,7 @@ export class BeautifulGraphView extends ItemView {
     const pruned=prunePositionSnapshot(this.plugin.data.positions,model.nodes.map(node=>node.path));if(Object.keys(pruned).length!==Object.keys(this.plugin.data.positions).length){this.plugin.data.positions=pruned;void this.plugin.persistData()}
     if(this.folderScope&&!model.nodes.some(node=>isPathInFolderScope(node.path,this.folderScope)))this.folderScope="";this.applyScopeFlags();this.preparedInitialTopology=prepareWorkerTopology(this.model.nodes.filter(node=>node.visible),this.model.edges,new Set(),this.plugin.data.positions,Math.random,this.plugin.settings.display.nodeSize);this.updateGraphCount();this.createPanels();
     this.prepareScene();if(this.closed||this.startupPhase!=="building")return;
-    this.fit(false);this.applyCameraTransform();this.setStartupPhase("prepared");this.startupMetrics.firstNodeCount=0;this.startupMetrics.firstEdgeCount=0;this.startupMetrics.firstGroupLabelCount=0;this.startupMetrics.firstPaintReady=this.model.nodes.length===0;
+    this.fit(false);this.applyCameraTransform();const initialBounds=this.visibleBounds(),initialViewport=this.cameraViewport();if(initialBounds){const usableHeight=Math.max(1,initialViewport.height-(initialViewport.insetBottom??0));this.startupMetrics.initialCameraOccupancy=Math.max((initialBounds.maxX-initialBounds.minX)*this.scale/Math.max(1,initialViewport.width),(initialBounds.maxY-initialBounds.minY)*this.scale/usableHeight)}this.setStartupPhase("prepared");this.startupMetrics.firstNodeCount=0;this.startupMetrics.firstEdgeCount=0;this.startupMetrics.firstGroupLabelCount=0;this.startupMetrics.firstPaintReady=this.model.nodes.length===0;
     this.revealStartup();
   }
 
