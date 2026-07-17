@@ -23,7 +23,7 @@ import { expandedFocusIds, toggledFocusRoots } from "./focus-selection";
 import { interpolateLabelOffset, labelScreenPosition } from "./label-layout";
 import { relaxLabelCollisions } from "./label-collision";
 import { orphanAllowed, thresholdFade } from "./presentation";
-import { admitStartup, metadataGraphReady } from "./startup-admission";
+import { admitStartup, createStartupAutoFitGate, metadataGraphReady } from "./startup-admission";
 import { prepareWorkerTopology, reconcileGraphNodes, sameWorkerTopology, type WorkerTopology } from "./graph-reconcile";
 import {circleIntersectsViewport,MAX_NODE_VIEWS_PER_FRAME,nearestMissing,reconcilePersistentObjects,RenderIdleWindow,segmentIntersectsViewport,worldViewport} from "./renderer-lifecycle";
 import {changedCollisionWeights,graphEventContract,PresentationDirty,PresentationInvalidation,type GraphEventContext,type RetainedGraphEvent} from "./presentation-events";
@@ -172,6 +172,7 @@ export class BeautifulGraphView extends ItemView {
   private startupLastFrame?:number;
   private startupFirstBatchRecorded=false;
   private startupAutoFitTimer?:number;
+  private claimStartupAutoFit=createStartupAutoFitGate();
 
   constructor(leaf: WorkspaceLeaf, private plugin: BeautifulGraphPlugin) { super(leaf); }
   getViewType(): string { return BEAUTIFUL_GRAPH_VIEW; }
@@ -366,7 +367,7 @@ export class BeautifulGraphView extends ItemView {
     if(message.transport==="transfer"){ids=message.ids;coords=message.coords}
     else{if(!this.sharedCoordinateBuffer||this.sharedCoordinateRevision!==message.revision||this.sharedCoordinateIds.length!==message.count)return false;if(this.sharedCoordinateScratch.length!==message.count*2)this.sharedCoordinateScratch=new Float32Array(message.count*2);if(!readSharedCoordinates({buffer:this.sharedCoordinateBuffer,publication:message.publication,count:message.count},this.sharedCoordinateScratch))return false;ids=this.sharedCoordinateIds;coords=this.sharedCoordinateScratch}
     for(let index=0;index<ids.length;index++){const id=ids[index],x=coords[index*2],y=coords[index*2+1],node=id===undefined?undefined:this.nodeIndex.get(id);if(!node||node===this.dragged||x===undefined||y===undefined||!Number.isFinite(x)||!Number.isFinite(y)||Math.abs(x)>500000||Math.abs(y)>500000)continue;node.x=x;node.y=y}
-    this.labelLayoutDirty=true;if(this.activeLenses.size)this.lensGeometryDirty=true;if(message.type==="coordinates"){this.physicsTicks++;if(this.startupPhase==="settling"&&this.startupAutoFitTimer===undefined)this.startupAutoFitTimer=window.setTimeout(()=>{this.startupAutoFitTimer=undefined;if(!this.closed&&this.startupPhase==="settling")this.fit()},250)}if(message.type==="sleep"){this.lastLabelLayout=0;if(this.activeLenses.size){this.lensGeometryDirty=true;this.presentationInvalidation.mark(PresentationDirty.Lens)}this.plugin.markLayoutCurrent();this.saveCooledPositions(ids,coords);if(this.startupPhase==="settling"){this.startupMetrics.workerTerminalAt=performance.now();this.finishInitialLayout(message.revision,{physicsTicks:this.physicsTicks})}}return true;
+    this.labelLayoutDirty=true;if(this.activeLenses.size)this.lensGeometryDirty=true;if(message.type==="coordinates"){this.physicsTicks++;if(this.startupPhase==="settling"&&this.claimStartupAutoFit())this.startupAutoFitTimer=window.setTimeout(()=>{this.startupAutoFitTimer=undefined;if(!this.closed&&this.startupPhase==="settling")this.fit()},250)}if(message.type==="sleep"){this.lastLabelLayout=0;if(this.activeLenses.size){this.lensGeometryDirty=true;this.presentationInvalidation.mark(PresentationDirty.Lens)}this.plugin.markLayoutCurrent();this.saveCooledPositions(ids,coords);if(this.startupPhase==="settling"){this.startupMetrics.workerTerminalAt=performance.now();this.finishInitialLayout(message.revision,{physicsTicks:this.physicsTicks})}}return true;
   }
   private renderOnDemand(now:number):void {this.renderFrame=0;if(this.closed||!this.renderIdle.nextFrame())return;const deltaMS=this.lastFrame?Math.min(50,Math.max(1,now-this.lastFrame)):16.67;this.lastFrame=now;const frameGap=this.startupLastFrame===undefined?0:now-this.startupLastFrame;if(this.startupPhase==="settling"){this.startupMetrics.maxFrameGap=Math.max(this.startupMetrics.maxFrameGap??0,frameGap);this.startupLastFrame=now}this.consumeCoordinateResult();if(this.advanceLabelOffsets(deltaMS)){this.presentationInvalidation.mark(PresentationDirty.Labels);this.renderIdle.changed()}const dirty=this.presentationInvalidation.take(),moreNodes=this.populateScene();this.renderFrameBody(dirty);this.pixi?.renderer.render(this.pixi.stage);if(moreNodes)this.renderIdle.changed();this.renderFrame=requestAnimationFrame(next=>this.renderOnDemand(next))}
 

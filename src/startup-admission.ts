@@ -13,6 +13,11 @@ export function admitStartup(
   return()=>{cancelled=true};
 }
 
+export function createStartupAutoFitGate():()=>boolean{
+  let claimed=false;
+  return()=>{if(claimed)return false;claimed=true;return true};
+}
+
 export function metadataGraphReady(
   markdownPaths:Iterable<string>,
   resolvedLinks:Readonly<Record<string,Readonly<Record<string,number>>>>,
