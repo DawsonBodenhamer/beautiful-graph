@@ -21,8 +21,9 @@ export type WorkerDisposeMessage={type:"dispose";version:typeof WORKER_PROTOCOL_
 export type GraphWorkerRequest=WorkerInitMessage|WorkerTopologyMessage|WorkerForcesMessage|WorkerWeightMessage|WorkerDragMessage|WorkerDragEndMessage|WorkerDisposeMessage;
 
 export type WorkerCoordinateKind="coordinates"|"sleep";
-export type WorkerSharedCoordinatesMessage<Kind extends WorkerCoordinateKind=WorkerCoordinateKind>={type:Kind;version:typeof WORKER_PROTOCOL_VERSION;revision:number;transport:"shared";publication:number;count:number;ids?:string[];buffer?:SharedArrayBuffer;alpha:number};
-export type WorkerTransferCoordinatesMessage<Kind extends WorkerCoordinateKind=WorkerCoordinateKind>={type:Kind;version:typeof WORKER_PROTOCOL_VERSION;revision:number;transport:"transfer";ids:string[];coords:Float32Array;alpha:number};
+export type WorkerRuntimeMetrics={tickMs:number;nodes:number;links:number;heapBytes:number};
+export type WorkerSharedCoordinatesMessage<Kind extends WorkerCoordinateKind=WorkerCoordinateKind>={type:Kind;version:typeof WORKER_PROTOCOL_VERSION;revision:number;transport:"shared";publication:number;count:number;ids?:string[];buffer?:SharedArrayBuffer;alpha:number;metrics:WorkerRuntimeMetrics};
+export type WorkerTransferCoordinatesMessage<Kind extends WorkerCoordinateKind=WorkerCoordinateKind>={type:Kind;version:typeof WORKER_PROTOCOL_VERSION;revision:number;transport:"transfer";ids:string[];coords:Float32Array;alpha:number;metrics:WorkerRuntimeMetrics};
 export type WorkerCoordinateMessage=WorkerSharedCoordinatesMessage|WorkerTransferCoordinatesMessage;
 export type WorkerCoordinatesMessage=WorkerSharedCoordinatesMessage<"coordinates">|WorkerTransferCoordinatesMessage<"coordinates">;
 export type WorkerSleepMessage=WorkerSharedCoordinatesMessage<"sleep">|WorkerTransferCoordinatesMessage<"sleep">;

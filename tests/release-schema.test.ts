@@ -24,6 +24,16 @@ test("production build emits and verifies the complete artifact contract",()=>{
   assert.match(verify,/Unexpected or stale bundle/);
 });
 
+test("Phase 8 verification fails closed on runtime evidence and installed hashes",()=>{
+  const pkg=json("../package.json"),verify=text("../tools/verify-phase8.mjs"),harness=text("../tools/benchmark-harness.js");
+  assert.match(pkg.scripts["verify:phase8"],/verify-phase8\.mjs/);
+  for(const report of ["baseline.json","rapid-drag.json","manual-open.json","live-baseline.json","idle-audit.json"])assert.match(verify,new RegExp(report.replace(".","\\.")));
+  assert.match(verify,/installed .* hash does not match the production build/);
+  assert.match(verify,/16\.667 ms worker-tick p95 budget/);
+  assert.match(harness,/artifactHashes/);
+  assert.match(harness,/getRuntimeDiagnostics/);
+});
+
 test("production source has no dormant V1 force or Tune paths",()=>{
   const sources=["../src/defaults.ts","../src/types.ts","../src/main.ts","../src/graph-view.ts","../src/worker-protocol.ts","../tools/benchmark-harness.js"].map(text).join("\n");
   for(const legacy of ["siblingLinkForce","rootLinkForce","runTuneBurst","burstComplete","createPhysicsWorkerSource"])assert.doesNotMatch(sources,new RegExp(legacy,"i"));

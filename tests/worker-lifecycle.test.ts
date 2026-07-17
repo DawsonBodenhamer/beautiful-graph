@@ -28,6 +28,13 @@ test("initialization queues exactly one audited-cadence timer",()=>{
   const ready=worker.messages.find(message=>message.type==="ready");assert.equal(ready?.type,"ready");if(ready?.type==="ready")assert.equal(ready.engine,"javascript");
   assert.equal(worker.timers.size,1);assert.equal([...worker.timers.values()][0]!.delay,WORKER_TICK_INTERVAL_MS);
   worker.runNext();assert.equal(worker.timers.size,1);assert.equal(worker.messages.filter(message=>message.type==="coordinates").length,2);
+  const coordinate=worker.messages.find(message=>message.type==="coordinates");assert.equal(coordinate?.type,"coordinates");if(coordinate?.type==="coordinates"){assert.ok(coordinate.metrics.tickMs>=0);assert.deepEqual({nodes:coordinate.metrics.nodes,links:coordinate.metrics.links},{nodes:2,links:1})}
+});
+
+test("runtime telemetry remains bounded across equal-size reconciliation",()=>{
+  const worker=harness();init(worker);worker.runNext();const before=worker.messages.at(-1);assert.equal(before?.type,"coordinates");
+  worker.runtime.onMessage({type:"topology",version:WORKER_PROTOCOL_VERSION,revision:2,nodes:[{id:"a",preserve:true,degree:1,radius:4},{id:"c",preserve:false,x:20,y:30,degree:1,radius:4}],edges:[{source:"a",target:"c",forward:true,reverse:false,relationship:"cross"}],heat:AUTOMATIC_WAKE_ALPHA});worker.runNext();const after=worker.messages.at(-1);assert.equal(after?.type,"coordinates");
+  if(before?.type==="coordinates"&&after?.type==="coordinates")assert.deepEqual({nodes:after.metrics.nodes,links:after.metrics.links,heapBytes:after.metrics.heapBytes},{nodes:before.metrics.nodes,links:before.metrics.links,heapBytes:before.metrics.heapBytes});
 });
 
 test("wake requests raise alpha and never cool a hotter simulation",()=>{

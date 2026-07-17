@@ -10,6 +10,7 @@ export const BARNES_HUT_THETA=.9;
 export type EngineKind="wasm"|"javascript";
 export type SimulationForces={center:number;charge:number;link:number;distance:number};
 export type SimulationNode={id:string;x:number;y:number;degree:number;radius:number;vx:number;vy:number;fx:number|null;fy:number|null};
+export type SimulationMemory={nodes:number;links:number;heapBytes:number};
 
 export interface SimulationEngine {
   readonly kind:EngineKind;
@@ -19,6 +20,7 @@ export interface SimulationEngine {
   setPin(id:string,x:number|null,y:number|null):void;
   tick(alpha:number):void;
   snapshot():readonly SimulationNode[];
+  memoryUsage():SimulationMemory;
   dispose():void;
 }
 

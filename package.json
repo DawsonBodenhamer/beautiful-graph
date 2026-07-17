@@ -9,6 +9,7 @@
     "build:wasm": "node tools/build-wasm.mjs",
     "build": "npm run build:wasm && tsc -noEmit -skipLibCheck && node esbuild.config.mjs production && node tools/verify-artifacts.mjs",
     "verify:artifacts": "node tools/verify-artifacts.mjs",
+    "verify:phase8": "node tools/verify-phase8.mjs",
     "test:rust": "cargo test --locked --workspace",
     "pretest": "npm run build:wasm",
     "test": "node --experimental-strip-types --test tests/*.test.ts",

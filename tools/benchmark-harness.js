@@ -14,6 +14,7 @@
   const RUNS = 3;
   const WARMUP_MS = 5_000;
   const OUTPUT_ROOT = "dev/beautiful_graph/tests/fixtures/perf";
+  const ARTIFACTS = ["main.js", "graph-worker.js", "graph-sim.wasm", "manifest.json", "styles.css"];
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const nowIso = () => new Date().toISOString();
   const round = (value) => Math.round(value * 1_000) / 1_000;
@@ -30,7 +31,28 @@
     return sorted[Math.ceil(0.95 * sorted.length) - 1];
   }
 
-  function summarize(samples, longTasks, frameGaps, workerMessages, workerBytes) {
+  async function sha256(bytes) {
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
+  }
+
+  async function releaseMetadata(plugin, view, commit) {
+    if (!/^[0-9a-f]{7,40}$/i.test(commit || "")) throw new Error("Pass the release-candidate commit, for example beautifulGraphBenchmark.run({ commit: \"abcdef0\" }).");
+    const directory = plugin.manifest.dir || ".obsidian/plugins/beautiful-graph";
+    const artifactHashes = {};
+    for (const artifact of ARTIFACTS) artifactHashes[artifact] = await sha256(await app.vault.adapter.readBinary(`${directory}/${artifact}`));
+    const captured = fixture(plugin, view);
+    return {
+      commit,
+      topologyHash: captured.topologyHash,
+      settingsHash: captured.settingsHash,
+      artifactHashes,
+      environment: captured.environment,
+      runtime: view.getRuntimeDiagnostics(),
+    };
+  }
+
+  function summarize(samples, longTasks, frameGaps, workerMessages, workerBytes, workerTicks, workerMemory) {
     return {
       sampleCount: samples.length,
       p95Ms: round(percentile95(samples)),
@@ -41,6 +63,11 @@
       frameGapMaxMs:round(frameGaps.length?Math.max(...frameGaps):0),
       workerMessages,
       workerBytes,
+      workerTickP95Ms: round(percentile95(workerTicks)),
+      workerTickMaxMs: round(workerTicks.length ? Math.max(...workerTicks) : 0),
+      workerTickSamples: workerTicks.length,
+      workerHeapMinBytes: workerMemory.length ? Math.min(...workerMemory) : 0,
+      workerHeapMaxBytes: workerMemory.length ? Math.max(...workerMemory) : 0,
     };
   }
 
@@ -79,10 +106,10 @@
       topologyHash:hash(JSON.stringify({nodes:nodes.map(node=>node.id),edges})),
       settingsHash:hash(JSON.stringify({forces:plugin.settings.forces,display:plugin.settings.display})),
       capturedAt: nowIso(),
-      baselineCommit: "6f8e351",
       environment: {
         obsidian: global.require?.("obsidian")?.getVersion?.() || app.version || "unknown",
         electron: navigator.userAgent.match(/Electron\/([^ ]+)/)?.[1] || "unknown",
+        operatingSystem: navigator.userAgent,
         devicePixelRatio: global.devicePixelRatio,
         hardwareConcurrency: navigator.hardwareConcurrency,
         platform: navigator.platform,
@@ -104,8 +131,9 @@
       const longTasks = [];
       const frameGaps=[];
       let frameRunning=true,lastFrame=performance.now(),workerMessages=0,workerBytes=0;
+      const workerTicks=[],workerMemory=[];
       const frame=now=>{frameGaps.push(now-lastFrame);lastFrame=now;if(frameRunning)requestAnimationFrame(frame)};requestAnimationFrame(frame);
-      const worker=view.worker,onWorker=event=>{workerMessages++;workerBytes+=event.data?.coords?.byteLength||0};worker?.addEventListener("message",onWorker);
+      const worker=view.worker,onWorker=event=>{workerMessages++;workerBytes+=event.data?.coords?.byteLength||0;if(Number.isFinite(event.data?.metrics?.tickMs)&&event.data.metrics.tickMs>0)workerTicks.push(event.data.metrics.tickMs);if(Number.isFinite(event.data?.metrics?.heapBytes))workerMemory.push(event.data.metrics.heapBytes)};worker?.addEventListener("message",onWorker);
       const observer = new PerformanceObserver((list) => {
         for (const entry of list.getEntries()) longTasks.push(entry.duration);
       });
@@ -126,7 +154,7 @@
         observer.disconnect();
         frameRunning=false;worker?.removeEventListener("message",onWorker);
       }
-      runs.push({ run: run + 1, workload: name, ...summarize(samples, longTasks,frameGaps,workerMessages,workerBytes),...driveMetrics });
+      runs.push({ run: run + 1, workload: name, ...summarize(samples, longTasks,frameGaps,workerMessages,workerBytes,workerTicks,workerMemory),...driveMetrics });
       await sleep(250);
     }
     return runs;
@@ -175,7 +203,7 @@
     },
   };
 
-  async function run() {
+  async function run(options = {}) {
     const { plugin, view } = context();
     const adapter = app.vault.adapter;
     await ensureDirectory(adapter, OUTPUT_ROOT);
@@ -191,12 +219,12 @@
     } finally {
       Object.assign(host.style, previous);
     }
-    const report = { schema: 2, capturedAt: nowIso(), protocol: { runs: RUNS, runMs: RUN_MS, warmupMs: WARMUP_MS, viewport:{width:1400,height:900},naturalPaintsOnly:true,p95: "sorted[ceil(0.95 * count) - 1]" }, results };
+    const report = { schema: 3, capturedAt: nowIso(), ...(await releaseMetadata(plugin, view, options.commit)), protocol: { runs: RUNS, runMs: RUN_MS, warmupMs: WARMUP_MS, viewport:{width:1400,height:900},naturalPaintsOnly:true,p95: "sorted[ceil(0.95 * count) - 1]",workerTickP95TargetMs:16.667,mainLongTaskLimitMs:50,frameGapP95TargetMs:33 }, results };
     await adapter.write(`${OUTPUT_ROOT}/baseline.json`, `${JSON.stringify(report, null, 2)}\n`);
     return report;
   }
 
-  async function runRapidDrag() {
+  async function runRapidDrag(options = {}) {
     const { plugin, view } = context();
     const adapter = app.vault.adapter;
     await ensureDirectory(adapter, OUTPUT_ROOT);
@@ -206,7 +234,7 @@
     try {
       await sleep(WARMUP_MS);
       const results = await sampleWorkload(view, "rapidDrag", workloads.rapidDrag);
-      const report = { schema: 2, capturedAt: nowIso(), topologyHash: fixture(plugin, view).topologyHash, settingsHash: fixture(plugin, view).settingsHash, protocol: { runs: RUNS, runMs: RUN_MS, warmupMs: WARMUP_MS, viewport:{width:1400,height:900},naturalPaintsOnly:true }, results };
+      const report = { schema: 3, capturedAt: nowIso(), ...(await releaseMetadata(plugin, view, options.commit)), protocol: { runs: RUNS, runMs: RUN_MS, warmupMs: WARMUP_MS, viewport:{width:1400,height:900},naturalPaintsOnly:true,pointerToPaintP95TargetMs:33 }, results };
       await adapter.write(`${OUTPUT_ROOT}/rapid-drag.json`, `${JSON.stringify(report, null, 2)}\n`);
       return report;
     } finally {
@@ -214,7 +242,7 @@
     }
   }
 
-  async function runManualOpen() {
+  async function runManualOpen(options = {}) {
     const { plugin } = context();
     const adapter = app.vault.adapter;
     await ensureDirectory(adapter, OUTPUT_ROOT);
@@ -227,7 +255,8 @@
       const startupNodes=view.model.nodes.filter(node=>node.visible),startupIds=new Set(startupNodes.map(node=>node.id)),xs=startupNodes.flatMap(node=>[node.x-node.radius*plugin.settings.display.nodeSize,node.x+node.radius*plugin.settings.display.nodeSize]),ys=startupNodes.flatMap(node=>[node.y-node.radius*plugin.settings.display.nodeSize,node.y+node.radius*plugin.settings.display.nodeSize]),viewport=view.cameraViewport(),finalOccupancy=Math.max((Math.max(...xs)-Math.min(...xs))*view.scale/viewport.width,(Math.max(...ys)-Math.min(...ys))*view.scale/(viewport.height-(viewport.insetBottom||0))),expectedEdges=view.model.edges.filter(edge=>startupIds.has(edge.source)&&startupIds.has(edge.target)).length,expectedLabels=startupNodes.filter(node=>node.alwaysLabel).length;
       observer.disconnect();const cameraScaleDrift=metrics.cameraScaleDrift??0,frameGapP95Ms=round(percentile95(frameGaps));runs.push({run:run+1,workload:"manualOpenStartup",stableMs:round(stableMs),longTaskCount:longTasks.length,longTaskMaxMs:round(longTasks.length?Math.max(...longTasks):0),frameGapP95Ms,finalOccupancy:round(finalOccupancy),metrics,passed:metrics.phase==="complete"&&metrics.workerTerminal==="sleep"&&longTasks.every(duration=>duration<=50)&&frameGapP95Ms<33&&(metrics.postGapP95Jump??0)<=2&&metrics.workerGenerations===1&&metrics.topologyRebuilds===0&&metrics.firstPaintReady&&metrics.firstNodeCount===metrics.finalNodeCount&&metrics.firstEdgeCount===expectedEdges&&metrics.firstGroupLabelCount===expectedLabels&&finalOccupancy>=.84&&finalOccupancy<=.9&&cameraScaleDrift<.002});await sleep(250);
     }
-    const report={schema:2,capturedAt:nowIso(),protocol:{runs:RUNS,startupTerminal:"worker-sleep",longTaskTargetMs:50,cameraScaleDriftTarget:.002},runs};await adapter.write(`${OUTPUT_ROOT}/manual-open.json`,`${JSON.stringify(report,null,2)}\n`);return report;
+    const finalView=app.workspace.getLeavesOfType("beautiful-graph").at(-1)?.view;
+    const report={schema:3,capturedAt:nowIso(),...(await releaseMetadata(plugin,finalView,options.commit)),protocol:{runs:RUNS,startupTerminal:"worker-sleep",longTaskTargetMs:50,cameraScaleDriftTarget:.002},runs};await adapter.write(`${OUTPUT_ROOT}/manual-open.json`,`${JSON.stringify(report,null,2)}\n`);return report;
   }
 
   async function waitFor(predicate, timeoutMs = 2_000) {
@@ -239,12 +268,14 @@
     return timeoutMs;
   }
 
-  async function runLiveBatch() {
-    const { view } = context();
+  async function runLiveBatch(options = {}) {
+    const { plugin, view } = context();
     const root = "__beautiful_graph_benchmark__";
     const paths = Array.from({ length: 4 }, (_, index) => `${root}/event_${index + 1}.md`);
     const renamed = paths.map((path) => path.replace("event_", "renamed_"));
     const samples = [];
+    const runtimeSamples=[];
+    const sampleRuntime=label=>runtimeSamples.push({label,mainHeapBytes:performance.memory?.usedJSHeapSize??null,...view.getRuntimeDiagnostics()});
     const record = async (kind, action, committed) => {
       const started = performance.now();
       await action();
@@ -252,6 +283,7 @@
       samples.push({ kind, latencyMs: round(latency), timedOut: latency >= 2_000, actionMs: round(performance.now() - started) });
     };
     try {
+      sampleRuntime("before");
       if (!app.vault.getAbstractFileByPath(root)) await app.vault.createFolder(root);
       for (const path of paths) await record("create", () => app.vault.create(path, "# Benchmark\n"), () => view.model.nodes.some((node) => node.id === path));
       for (let index = 0; index < paths.length; index += 1) {
@@ -275,6 +307,7 @@
         await record("rename", async () => app.fileManager.renameFile(app.vault.getAbstractFileByPath(from), to), () => view.model.nodes.some((node) => node.id === to) && !view.model.nodes.some((node) => node.id === from));
       }
       for (const path of renamed) await record("delete", async () => app.vault.delete(app.vault.getAbstractFileByPath(path), true), () => !view.model.nodes.some((node) => node.id === path));
+      sampleRuntime("after-actions");
     } finally {
       for (const path of [...paths, ...renamed]) {
         const file = app.vault.getAbstractFileByPath(path);
@@ -282,11 +315,34 @@
       }
       const folder = app.vault.getAbstractFileByPath(root);
       if (folder) await app.vault.delete(folder, true);
+      await sleep(1_000);sampleRuntime("after-cleanup");
     }
-    const result = { capturedAt: nowIso(), eventCount: samples.length, p95Ms: round(percentile95(samples.map((sample) => sample.latencyMs))), maxMs: round(Math.max(...samples.map((sample) => sample.latencyMs))), timedOut: samples.filter((sample) => sample.timedOut).length, samples };
+    const result = { schema:3,capturedAt: nowIso(),...(await releaseMetadata(plugin,view,options.commit)), eventCount: samples.length, p95Ms: round(percentile95(samples.map((sample) => sample.latencyMs))), maxMs: round(Math.max(...samples.map((sample) => sample.latencyMs))), timedOut: samples.filter((sample) => sample.timedOut).length, runtimeSamples, samples };
     await app.vault.adapter.write(`${OUTPUT_ROOT}/live-baseline.json`, `${JSON.stringify(result, null, 2)}\n`);
     return result;
   }
 
-  global.beautifulGraphBenchmark = Object.freeze({ run, runManualOpen, runRapidDrag, runLiveBatch, fixture: () => fixture(context().plugin, context().view) });
+  async function runIdleAudit(options = {}) {
+    const {plugin,view}=context();
+    const adapter=app.vault.adapter;
+    await ensureDirectory(adapter,OUTPUT_ROOT);
+    while(view.getStartupMetrics().phase==="settling")await sleep(50);
+    await sleep(1_500);
+    const worker=view.worker;
+    let workerMessages=0;
+    const onWorker=()=>workerMessages++;
+    worker?.addEventListener("message",onWorker);
+    const idleStarted=performance.now();
+    await sleep(1_000);
+    const idle={durationMs:round(performance.now()-idleStarted),workerMessages,renderFrame:view.renderFrame,workerTerminal:view.getStartupMetrics().workerTerminal};
+    view.renderGraph();
+    await new Promise(requestAnimationFrame);
+    const rendererWake={renderFrame:view.renderFrame,workerMessages};
+    worker?.removeEventListener("message",onWorker);
+    const report={schema:3,capturedAt:nowIso(),...(await releaseMetadata(plugin,view,options.commit)),idle,rendererWake,passed:idle.workerTerminal==="sleep"&&idle.workerMessages===0&&idle.renderFrame===0&&rendererWake.renderFrame!==0&&rendererWake.workerMessages===0};
+    await adapter.write(`${OUTPUT_ROOT}/idle-audit.json`,`${JSON.stringify(report,null,2)}\n`);
+    return report;
+  }
+
+  global.beautifulGraphBenchmark = Object.freeze({ run, runManualOpen, runRapidDrag, runLiveBatch, runIdleAudit, fixture: () => fixture(context().plugin, context().view) });
 })(window);

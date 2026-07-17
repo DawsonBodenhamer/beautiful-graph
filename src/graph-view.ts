@@ -62,6 +62,7 @@ type StartupMetrics={
   workerTerminal?:"sleep"|"worker-error";
   physicsTicks?:number;
 };
+type RuntimeDiagnostics={engine?:"wasm"|"javascript";transport?:"shared"|"transfer";tickMs?:number;heapBytes?:number;nodes?:number;links?:number};
 export class BeautifulGraphView extends ItemView {
   private pixi?: Application;
   private scene = new Container();
@@ -107,6 +108,7 @@ export class BeautifulGraphView extends ItemView {
   private dragButtons=0;
   private suppressNodeTapUntil=0;
   private physicsTicks = 0;
+  private runtimeDiagnostics:RuntimeDiagnostics={};
   private physicsFrozen=false;
   private visibility = new Map<string, number>();
   private zoomTarget?: { scale:number; x:number; y:number };
@@ -171,6 +173,7 @@ export class BeautifulGraphView extends ItemView {
   getDisplayText(): string { return "Beautiful Graph"; }
   getIcon(): string { return "orbit"; }
   getStartupMetrics():Readonly<StartupMetrics>{return {...this.startupMetrics}}
+  getRuntimeDiagnostics():Readonly<RuntimeDiagnostics>{return {...this.runtimeDiagnostics}}
 
   async onOpen(): Promise<void> {
     this.closed=false;this.setStartupPhase("waiting");this.startupMetrics={phase:"waiting",openedAt:performance.now(),firstNodeCount:0,firstEdgeCount:0,firstGroupLabelCount:0,firstPaintReady:false,finalNodeCount:0,workerGenerations:0,topologyRebuilds:0};this.startupLastFrame=undefined;this.startupFirstBatchRecorded=false;
@@ -267,7 +270,7 @@ export class BeautifulGraphView extends ItemView {
     if(!this.worker){
       const directory=this.plugin.manifest.dir;if(!directory){this.physicsFrozen=true;if(this.startupPhase==="settling")this.degradeStartup("worker-error");new Notice(`Beautiful Graph installation error: ${GRAPH_WORKER_ASSET} cannot be located.`);return}
       let worker:Worker;try{worker=createPhysicsWorker(this.app.vault.adapter.getResourcePath(`${directory}/${GRAPH_WORKER_ASSET}`))}catch(error){this.physicsFrozen=true;if(this.startupPhase==="settling")this.degradeStartup("worker-error");new Notice(`Beautiful Graph installation error: ${GRAPH_WORKER_ASSET} could not be started.`);this.plugin.logDiagnostic("worker-create-failure",{error:String(error)});return}this.worker=worker;this.startupMetrics.workerGenerations++;
-      worker.onmessage=(event:MessageEvent<GraphWorkerResponse>)=>{const message=event.data;if(message.version!==WORKER_PROTOCOL_VERSION)return;if(message.type==="failure"){this.failPhysicsWorker(worker,message.message);return}if(message.type==="ready"){this.plugin.logDiagnostic(message.engine==="javascript"?"physics-engine-fallback":"physics-engine-selected",{engine:message.engine,revision:message.revision});return}if(message.revision!==this.workerGeneration||this.physicsFrozen)return;this.acceptCoordinateResult(message)};
+      worker.onmessage=(event:MessageEvent<GraphWorkerResponse>)=>{const message=event.data;if(message.version!==WORKER_PROTOCOL_VERSION)return;if(message.type==="failure"){this.failPhysicsWorker(worker,message.message);return}if(message.type==="ready"){this.runtimeDiagnostics.engine=message.engine;this.plugin.logDiagnostic(message.engine==="javascript"?"physics-engine-fallback":"physics-engine-selected",{engine:message.engine,revision:message.revision});return}if(message.revision!==this.workerGeneration||this.physicsFrozen)return;this.runtimeDiagnostics={...this.runtimeDiagnostics,transport:message.transport,...message.metrics};this.acceptCoordinateResult(message)};
       worker.onerror=event=>this.failPhysicsWorker(worker,`Physics worker failed: ${event.message||`missing ${GRAPH_WORKER_ASSET}`}`);worker.onmessageerror=()=>this.failPhysicsWorker(worker,"Physics worker returned an unreadable message.");
     }
     this.workerCollisionRadii=new Map(nodes.map(node=>[node.id,node.radius]));

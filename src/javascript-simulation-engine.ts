@@ -29,6 +29,7 @@ export class JavaScriptSimulationEngine implements SimulationEngine{
   updateWeights(weights:Array<{id:string;degree:number;radius:number}>):void{const byId=new Map(this.nodes.map(node=>[node.id,node]));for(const weight of weights){const node=byId.get(weight.id);if(node){node.degree=Math.max(1,requiredFinite(weight.degree));node.radius=effectiveCollisionRadius(requiredFinite(weight.radius))}}}
   setPin(id:string,x:number|null,y:number|null):void{const node=this.nodes.find(candidate=>candidate.id===id);if(!node)return;node.fx=finiteOrNull(x);node.fy=finiteOrNull(y);if(node.fx!==null){node.x=node.fx;node.vx=0}if(node.fy!==null){node.y=node.fy;node.vy=0}}
   snapshot():readonly SimulationNode[]{return this.nodes}
+  memoryUsage(){return{nodes:this.nodes.length,links:this.edges.length,heapBytes:0}}
   dispose():void{this.nodes=[];this.edges=[];this.quads=[]}
 
   tick(alpha:number):void{
