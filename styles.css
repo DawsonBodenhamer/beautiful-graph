@@ -69,5 +69,5 @@
 /* Revision 27: normalize graph action buttons to the Forces/Display baseline. */
 .beautiful-graph-toolbar{gap:6px}.beautiful-graph-toolbar button,.beautiful-gui-dock button{box-sizing:border-box;height:22px;min-height:22px;padding:2px 9px;font-size:11px;line-height:1.15}
 .beautiful-palette-row,.beautiful-preset-row{gap:6px}.beautiful-group-actions{gap:6px;margin:6px 0 0}.beautiful-groups-footer .beautiful-preset-row{margin-top:6px}
-.beautiful-palette-row button,.beautiful-group-actions button{border:1px solid #344752;border-radius:8px;background:#111c24;color:#b9c8d1}
+.beautiful-panel-reset,.beautiful-palette-row button,.beautiful-group-actions button{border:1px solid var(--background-modifier-border);border-radius:8px;background:var(--interactive-normal);box-shadow:var(--input-shadow);color:var(--text-normal)}
 .beautiful-palette-row button:hover,.beautiful-group-actions button:hover{border-color:#44d7b6;color:#44d7b6}

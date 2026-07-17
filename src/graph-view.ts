@@ -29,6 +29,8 @@ export const BEAUTIFUL_GRAPH_VIEW = "beautiful-graph";
 type NodeView = { node: GraphNode; surface: Sprite; glow: Sprite; icon?:Text; iconRes?: number; label?: Text; labelBg?: Graphics; leader?:Graphics; labelMetrics?:{width:number;height:number;radius:number}; styleKey?: string };
 type NumericControlHandle={readout:HTMLInputElement;setValue:(value:number)=>number};
 type ViewNumericControlSpec={label:string;value:number;min:number;max:number|(()=>number);step:number;onChange:(value:number,final:boolean)=>void};
+type EdgeSegment={a:GraphNode;b:GraphNode;bend:number};
+type EdgeRenderBucket={color:number;alpha:number;segments:EdgeSegment[]};
 type StartupPhase="waiting"|"building"|"prepared"|"settling"|"complete"|"degraded"|"cancelled";
 type StartupMetrics={
   phase:StartupPhase;
@@ -101,6 +103,9 @@ export class BeautifulGraphView extends ItemView {
   private zoomTarget?: { scale:number; x:number; y:number };
   private zoomAnimating = false;
   private edgeBends = new Map<string, number>();
+  private edgeRenderBuckets:EdgeRenderBucket[]=[];
+  private focusEdgeSegments:EdgeSegment[]=[];
+  private edgeStrokeScale=0;
   private glowTexture?: Texture;
   private focusProgress = 0;
   private focusAnimation = 0;
@@ -293,8 +298,7 @@ export class BeautifulGraphView extends ItemView {
 
   private prepareScene():void{
     if(this.labelCreationFrame)cancelAnimationFrame(this.labelCreationFrame);this.labelCreationFrame=0;this.pendingLabels.clear();
-    this.links.clear();
-    this.focusLinks.clear();
+    this.links.clear();this.focusLinks.clear();this.edgeRenderBuckets=[];this.focusEdgeSegments=[];this.edgeStrokeScale=0;
     this.territoryLayer.removeChildren().forEach(child=>child.destroy({children:true}));this.lensShapes.clear();this.lastTerritoryUpdate=0;this.lensGeometryDirty=true;
     for(const layer of [this.focusGlowLayer,this.focusLeaderLayer,this.focusNodeLayer,this.focusLabelLayer])layer.removeChildren().forEach(child=>child.destroy());
     this.glowLayer.removeChildren().forEach((child) => child.destroy());
@@ -358,9 +362,7 @@ export class BeautifulGraphView extends ItemView {
     const visible = new Map(this.model.nodes.filter((n) => (this.visibility.get(n.id)??0)>.01).map((n) => [n.id, n]));
     const curvature=this.plugin.settings.forces.curvature,curvatureMagnitude=Math.abs(curvature),now=performance.now(),refreshBends=curvatureMagnitude>0&&now-this.lastBendUpdate>250,obstacleGrid=refreshBends?this.makeObstacleGrid():undefined;if(refreshBends)this.lastBendUpdate=now;
     if(this.lensGeometryDirty&&!this.zoomAnimating&&now-this.lastTerritoryUpdate>(now<this.motionUntil?280:80)){this.lastTerritoryUpdate=now;this.lensGeometryDirty=false;this.updateFolderLens()}
-    this.links.clear();this.focusLinks.clear();
-    type EdgeSegment={a:GraphNode;b:GraphNode;bend:number};
-    const focusRoots=this.activeFocusRoots(),focusedNodes=this.focusedNodeIds(focusRoots),hasFocus=focusRoots.size>0,edgeBuckets=new Map<string,{color:number;alpha:number;segments:EdgeSegment[]}>(),focusSegments:EdgeSegment[]=[];
+    const focusRoots=this.activeFocusRoots(),focusedNodes=this.focusedNodeIds(focusRoots),hasFocus=focusRoots.size>0,edgeBuckets=new Map<string,EdgeRenderBucket>(),focusSegments:EdgeSegment[]=[];
     for (const edge of this.model.edges) {
       const a = visible.get(edge.source), b = visible.get(edge.target); if (!a || !b) continue;const ar=this.searchRoles.get(a.id),br=this.searchRoles.get(b.id);if(ar==="hidden"||br==="hidden"||(ar==="context"&&br==="context"))continue;
       if(!this.plugin.settings.display.showSiblingLinks&&edge.relationship==="sibling")continue;
@@ -369,10 +371,19 @@ export class BeautifulGraphView extends ItemView {
       const satelliteLink=ar==="context"||br==="context",lensEdgeAlpha=this.activeLenses.size&&!(this.lensMembers.has(a.id)&&this.lensMembers.has(b.id))?.175:1,edgeAlpha=(satelliteLink?.16:.32)*lensEdgeAlpha;
       const color=related?0x668899:0x334455,bucketKey=`${color}:${edgeAlpha}`,bucket=edgeBuckets.get(bucketKey)??{color,alpha:edgeAlpha,segments:[]};bucket.segments.push({a,b,bend});edgeBuckets.set(bucketKey,bucket);if(hasFocus&&related)focusSegments.push({a,b,bend});
     }
-    const drawSegments=(graphics:Graphics,segments:EdgeSegment[])=>{for(const {a,b,bend} of segments){graphics.moveTo(a.x,a.y);if(Math.abs(bend)>.004)graphics.quadraticCurveTo((a.x+b.x)/2+(b.y-a.y)*bend,(a.y+b.y)/2-(b.x-a.x)*bend,b.x,b.y);else graphics.lineTo(b.x,b.y)}};for(const bucket of edgeBuckets.values()){drawSegments(this.links,bucket.segments);this.links.stroke({color:bucket.color,alpha:bucket.alpha,width:this.plugin.settings.display.linkThickness/this.scale})}if(focusSegments.length){drawSegments(this.focusLinks,focusSegments);this.focusLinks.stroke({color:0x7da8b8,alpha:.42,width:this.plugin.settings.display.linkThickness/this.scale})}
+    this.edgeRenderBuckets=[...edgeBuckets.values()];this.focusEdgeSegments=focusSegments;this.drawCachedEdges();
     for (const view of this.views.values()) this.updateNodeView(view, !hasFocus || focusedNodes.has(view.node.id));
     this.layoutLabels();
     this.applyFocusFrame();
+  }
+
+  private drawCachedEdges():void {
+    this.links.clear();this.focusLinks.clear();
+    const drawSegments=(graphics:Graphics,segments:EdgeSegment[])=>{for(const {a,b,bend} of segments){graphics.moveTo(a.x,a.y);if(Math.abs(bend)>.004)graphics.quadraticCurveTo((a.x+b.x)/2+(b.y-a.y)*bend,(a.y+b.y)/2-(b.x-a.x)*bend,b.x,b.y);else graphics.lineTo(b.x,b.y)}};
+    const width=this.plugin.settings.display.linkThickness/this.scale;
+    for(const bucket of this.edgeRenderBuckets){drawSegments(this.links,bucket.segments);this.links.stroke({color:bucket.color,alpha:bucket.alpha,width})}
+    if(this.focusEdgeSegments.length){drawSegments(this.focusLinks,this.focusEdgeSegments);this.focusLinks.stroke({color:0x7da8b8,alpha:.42,width})}
+    this.edgeStrokeScale=this.scale;
   }
 
   private updateNodeView(view: NodeView, related: boolean): void {
@@ -582,7 +593,7 @@ export class BeautifulGraphView extends ItemView {
   private startupCameraTarget():{scale:number;x:number;y:number}|undefined{const bounds=this.visibleBounds();if(!bounds)return;const center=viewportCenter(this.cameraViewport());return{scale:this.scale,x:center.x-(bounds.minX+bounds.maxX)/2*this.scale,y:center.y-(bounds.minY+bounds.maxY)/2*this.scale}}
   private startupCameraResidual():number{const target=this.startupCameraTarget();return target?Math.hypot(target.x-this.offset.x,target.y-this.offset.y):0}
   private trackStartupCamera(deltaMS:number):void{const target=this.startupCameraTarget();if(!target)return;const blend=1-Math.exp(-Math.max(1,deltaMS)/240),dx=(target.x-this.offset.x)*blend,dy=(target.y-this.offset.y)*blend,distance=Math.hypot(dx,dy),cap=2,factor=distance>cap?cap/distance:1;this.offset.x+=dx*factor;this.offset.y+=dy*factor;this.startupMetrics.finalCameraResidual=this.startupCameraResidual();this.startupMetrics.cameraScaleDrift=this.startupMetrics.initialCameraScale?Math.abs(this.scale/this.startupMetrics.initialCameraScale-1):0;this.applyCameraTransform(deltaMS)}
-  private applyCameraTransform(deltaMS=0):void {for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld]){layer.position.set(this.offset.x,this.offset.y);layer.scale.set(this.scale)}const roots=this.activeFocusRoots(),focused=this.focusedNodeIds(roots);for(const view of this.views.values()){const related=!roots.size||focused.has(view.node.id);if(view.icon)this.updateIconPresentation(view,related);if(view.label)this.updateLabelPresentation(view,related)}if(this.zoomAnimating)this.layoutLabels();if(deltaMS>0)this.advanceLabelOffsets(deltaMS);this.positionLabelsAndLeaders()}
+  private applyCameraTransform(deltaMS=0):void {for(const layer of [this.world,this.focusWorld,this.tetherWorld,this.labelWorld]){layer.position.set(this.offset.x,this.offset.y);layer.scale.set(this.scale)}if(this.edgeStrokeScale!==this.scale)this.drawCachedEdges();const roots=this.activeFocusRoots(),focused=this.focusedNodeIds(roots);for(const view of this.views.values()){const related=!roots.size||focused.has(view.node.id);if(view.icon)this.updateIconPresentation(view,related);if(view.label)this.updateLabelPresentation(view,related)}if(this.zoomAnimating)this.layoutLabels();if(deltaMS>0)this.advanceLabelOffsets(deltaMS);this.positionLabelsAndLeaders()}
   private animateZoom():void {if(this.zoomAnimating)return;this.zoomAnimating=true;let last=performance.now();const step=(now:number)=>{if(!this.zoomTarget){this.zoomAnimating=false;return}const dt=Math.min(50,Math.max(1,now-last));last=now;const t=this.zoomTarget,blend=1-Math.exp(-dt/160);this.scale+=(t.scale-this.scale)*blend;this.offset.x+=(t.x-this.offset.x)*blend;this.offset.y+=(t.y-this.offset.y)*blend;this.applyCameraTransform(dt);if(Math.abs(t.scale-this.scale)>.001||Math.hypot(t.x-this.offset.x,t.y-this.offset.y)>.2)requestAnimationFrame(step);else{this.scale=t.scale;this.offset={x:t.x,y:t.y};this.zoomTarget=undefined;this.zoomAnimating=false;this.lastLabelLayout=0;this.labelLayoutDirty=true;this.renderGraph()}};requestAnimationFrame(step)}
   private setCategoryVisible(category:string,shown:boolean):void {this.pushHistory();this.plugin.settings.categoryVisibility[category]=shown;const changed:string[]=[];for(const node of this.model.nodes)if(node.category===category){const visible=shown&&isPathInFolderScope(node.path,this.folderScope);if(node.visible!==visible)changed.push(node.id);node.visible=visible}this.lensGeometryDirty=true;void this.plugin.persistData();if(this.search){void this.applySearch(this.search)}else{this.startActiveWorker();this.animateNodeVisibility(changed)}this.updateGraphCount();this.createPanels()}
   private makeObstacleGrid():Map<string,GraphNode[]>{const size=60,g=new Map<string,GraphNode[]>();for(const n of this.model.nodes)if(n.visible){const k=`${Math.floor(n.x/size)},${Math.floor(n.y/size)}`;const a=g.get(k)??[];a.push(n);g.set(k,a)}return g}
