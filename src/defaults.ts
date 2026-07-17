@@ -9,11 +9,11 @@ export const DEFAULT_FORCES: GraphForces = {
 
 export const DEFAULT_DISPLAY: GraphDisplay = {
   arrows: false,
-  textFade: 24.748992,
-  nodeSize: 2.8660740000000002,
-  linkThickness: 1.2583300000000004,
-  glow: 0.679144,
-  glowSize: 1.3,
+  textFade: 24.7,
+  nodeSize: 4,
+  linkThickness: 1.3,
+  glow: 0.45,
+  glowSize: 1.5,
   showSiblingLinks: false,
   showOrphans: true,
   showLinkedInSearch: false,
