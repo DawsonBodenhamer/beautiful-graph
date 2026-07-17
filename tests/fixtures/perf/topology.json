@@ -19,7 +19,6 @@
       "repel": 0.279,
       "link": 0.054,
       "distance": 247,
-      "curvature": 0,
       "stretchiness": 0,
       "siblingLinkForce": true
     },

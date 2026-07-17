@@ -5,7 +5,6 @@ export const DEFAULT_FORCES: GraphForces = {
   repel: 10,
   link: 1,
   distance: 250,
-  curvature: 0,
   siblingLinkForce: 15,
   rootLinkForce: 1,
 };
