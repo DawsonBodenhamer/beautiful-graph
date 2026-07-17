@@ -28,9 +28,10 @@ import { prepareWorkerTopology, reconcileGraphNodes, sameWorkerTopology, type Wo
 import {circleIntersectsViewport,MAX_NODE_VIEWS_PER_FRAME,nearestMissing,reconcilePersistentObjects,RenderIdleWindow,segmentIntersectsViewport,worldViewport} from "./renderer-lifecycle";
 import {changedCollisionWeights,graphEventContract,PresentationDirty,PresentationInvalidation,type GraphEventContext,type RetainedGraphEvent} from "./presentation-events";
 import {textureCircleContains} from "./node-hit-area";
+import {iconStyleMetrics} from "./icon-style";
 
 export const BEAUTIFUL_GRAPH_VIEW = "beautiful-graph";
-type NodeView = { node: GraphNode; surface: Sprite; glow: Sprite; icon?:Text; iconRes?: number; label?: Text; labelBg?: Graphics; leader?:Graphics; labelMetrics?:{width:number;height:number;radius:number}; styleKey?: string };
+type NodeView = { node: GraphNode; surface: Sprite; glow: Sprite; icon?:Text; label?: Text; labelBg?: Graphics; leader?:Graphics; labelMetrics?:{width:number;height:number;radius:number}; styleKey?: string };
 type NumericControlHandle={readout:HTMLInputElement;setValue:(value:number)=>number};
 type ViewNumericControlSpec={label:string;value:number;resetValue:number;min:number;max:number|(()=>number);step:number;onChange:(value:number,final:boolean)=>void};
 type EdgeView={source:string;target:string;line:Sprite;focus:Sprite;arrow:Graphics};
@@ -340,10 +341,10 @@ export class BeautifulGraphView extends ItemView {
     let label: Text | undefined,labelBg:Graphics|undefined;
     let leader:Graphics|undefined;
     if (node.alwaysLabel) {({label,labelBg}=this.makeLabel(node));leader=new Graphics();leader.eventMode="none";this.leaderLayer.addChild(leader)}
-    this.views.set(node.id, { node, surface, glow, icon,iconRes:icon?.resolution, label, labelBg,leader });
+    this.views.set(node.id, { node, surface, glow, icon, label, labelBg,leader });
   }
 
-  private ensureIcon(view:NodeView,renderedRadius:number):Text|undefined{if(view.icon||!view.node.icon)return view.icon;const icon=new Text({text:view.node.icon,style:new TextStyle({fontSize:renderedRadius*.9,dropShadow:{color:0x000000,alpha:.936,blur:3.6,distance:1.2}}),resolution:Math.min(4,Math.max(2,window.devicePixelRatio*2))});icon.anchor.set(.5);icon.eventMode="none";icon.roundPixels=true;this.nodeLayer.addChild(icon);view.icon=icon;view.iconRes=icon.resolution;return icon}
+  private ensureIcon(view:NodeView,renderedRadius:number):Text|undefined{if(view.icon||!view.node.icon)return view.icon;const metrics=iconStyleMetrics(renderedRadius),icon=new Text({text:view.node.icon,style:new TextStyle({fontSize:metrics.fontSize,dropShadow:{color:0x000000,alpha:.98,blur:metrics.shadowBlur,distance:metrics.shadowDistance}}),resolution:Math.min(4,Math.max(2,window.devicePixelRatio*2))});icon.anchor.set(.5);icon.eventMode="none";icon.roundPixels=true;this.nodeLayer.addChild(icon);view.icon=icon;return icon}
 
   private makeLabel(node:GraphNode):{label:Text;labelBg:Graphics}{const labelBg=new Graphics();labelBg.eventMode="none";this.labelLayer.addChild(labelBg);const label=new Text({text:node.label,style:new TextStyle({fontSize:14,fontWeight:"600",fill:0xffffff,dropShadow:{color:0x000000,alpha:.9,blur:3,distance:1.5}})});label.anchor.set(.5);label.eventMode="none";this.labelLayer.addChild(label);this.drawLabelBackground(labelBg,label,node.color);return{label,labelBg}}
   private drawLabelBackground(background:Graphics,label:Text,color:string):void{const bounds=label.getLocalBounds(),w=bounds.width+12,h=bounds.height+6,c=Number.parseInt(color.slice(1),16),radius=Math.min(9,h/2);background.clear().roundRect(-w/2,-h/2,w,h,radius).fill({color:c,alpha:1}).stroke({color:0xffffff,alpha:.58,width:.7}).roundRect(-w/2+2,-h/2+2,w-4,Math.max(2,h*.38),Math.max(2,radius-2)).fill({color:0xffffff,alpha:.22})}
@@ -391,7 +392,7 @@ export class BeautifulGraphView extends ItemView {
     const renderedRadius=isContext?Math.max(this.minRadius*.7,Math.min(node.radius*.55,this.minRadius*1.6)):node.radius,r=renderedRadius*this.plugin.settings.display.nodeSize,radiusT=this.maxRadius===this.minRadius?1:Math.max(0,Math.min(1,(node.radius-this.minRadius)/(this.maxRadius-this.minRadius))),outerFactor=5-3*radiusT,baseGlow=this.maxRadius===this.minRadius?1:.04+.96*radiusT,glowAmount=isContext||lensAlpha<1&&!focused?0:this.plugin.settings.display.glow*baseGlow;
     const styleKey = `${r}`;
     if (view.styleKey !== styleKey) {
-      if (view.icon) view.icon.style.fontSize=r*.9;
+      if (view.icon) {const metrics=iconStyleMetrics(r);view.icon.style.fontSize=metrics.fontSize;view.icon.style.dropShadow.blur=metrics.shadowBlur;view.icon.style.dropShadow.distance=metrics.shadowDistance}
       view.styleKey = styleKey;
     }
     const circleViewport=worldViewport(this.contentEl.clientWidth,this.contentEl.clientHeight,this.scale,this.offset,12),circleVisible=circleIntersectsViewport(node.x,node.y,r,circleViewport);surface.position.set(node.x,node.y);surface.texture=this.getNodeTexture(isContext?"#8A94A6":node.color);surface.tint=0xffffff;surface.width=surface.height=r*2;surface.alpha=visibility*focusAlpha*lensAlpha*roleAlpha;surface.visible=visibility>.01&&circleVisible;
@@ -401,7 +402,7 @@ export class BeautifulGraphView extends ItemView {
   }
 
   private updateIconPresentation(view:NodeView,related:boolean,r?:number,isContext?:boolean,lensAlpha?:number,visibility?:number,focusAlpha?:number):void {
-    const {node,icon}=view;if(!icon)return;const role=this.searchRoles.get(node.id),context=isContext??role==="context",lens=lensAlpha??(this.activeLenses.size&&!this.lensMembers.has(node.id)?.175:1),shown=visibility??(this.visibility.get(node.id)??0),focus=focusAlpha??(related?1:1-this.focusProgress*.85),radius=r??((context?Math.max(this.minRadius*.7,Math.min(node.radius*.55,this.minRadius*1.6)):node.radius)*this.plugin.settings.display.nodeSize),fade=node.hub?1:thresholdFade(radius*this.scale,10),visible=!context&&shown>.01&&fade>.001,wanted=this.scale>2.5?8:this.scale>1.2?4:2;if(visible&&view.iconRes!==wanted){icon.resolution=wanted;view.iconRes=wanted}icon.position.set(node.x,node.y);icon.scale.set(.05+.95*fade);icon.alpha=shown*focus*lens*(.05+.95*fade);icon.visible=visible;
+    const {node,icon}=view;if(!icon)return;const role=this.searchRoles.get(node.id),context=isContext??role==="context",lens=lensAlpha??(this.activeLenses.size&&!this.lensMembers.has(node.id)?.175:1),shown=visibility??(this.visibility.get(node.id)??0),focus=focusAlpha??(related?1:1-this.focusProgress*.85),radius=r??((context?Math.max(this.minRadius*.7,Math.min(node.radius*.55,this.minRadius*1.6)):node.radius)*this.plugin.settings.display.nodeSize),fade=node.hub?1:thresholdFade(radius*this.scale,10),visible=!context&&shown>.01&&fade>.001;icon.position.set(node.x,node.y);icon.scale.set(.05+.95*fade);icon.alpha=shown*focus*lens*(.05+.95*fade);icon.visible=visible;
   }
 
   private updateLabelPresentation(view:NodeView,related:boolean,r?:number,isContext?:boolean,lensAlpha?:number,visibility?:number,focusAlpha?:number,focused?:boolean):void {
