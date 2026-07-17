@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "releaseVersion": "2.0.0",
+  "artifacts": [
+    {
+      "path": "main.js",
+      "producer": "esbuild:main",
+      "required": true
+    },
+    {
+      "path": "graph-worker.js",
+      "producer": "esbuild:worker",
+      "required": true
+    },
+    {
+      "path": "graph-sim.wasm",
+      "producer": "cargo:wasm32-unknown-unknown",
+      "required": true
+    },
+    {
+      "path": "manifest.json",
+      "producer": "repository",
+      "required": true
+    },
+    {
+      "path": "styles.css",
+      "producer": "repository",
+      "required": true
+    }
+  ]
+}
+

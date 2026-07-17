@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "protocolVersion": 1,
+  "wasmAbiVersion": 1,
+  "scenarios": [
+    {
+      "id": "singleton_center_and_damping",
+      "sourceSections": ["Force Model/Centering", "Force Model/Integration and damping", "Alpha Lifecycle"],
+      "tolerance": 0.000001,
+      "nodes": [
+        { "id": "n0", "x": 100, "y": -50, "vx": 2, "vy": -1, "fx": null, "fy": null, "weight": 1, "collisionRadius": 60 }
+      ],
+      "links": []
+    },
+    {
+      "id": "degree_normalized_chain",
+      "sourceSections": ["Force Model/Link springs", "Force Model/Repulsion", "Force Model/Collision"],
+      "tolerance": 0.0001,
+      "nodes": [
+        { "id": "n0", "x": -250, "y": 0, "vx": 0, "vy": 0, "fx": null, "fy": null, "weight": 1, "collisionRadius": 60 },
+        { "id": "n1", "x": 0, "y": 0, "vx": 0, "vy": 0, "fx": null, "fy": null, "weight": 2, "collisionRadius": 60 },
+        { "id": "n2", "x": 250, "y": 0, "vx": 0, "vy": 0, "fx": null, "fy": null, "weight": 1, "collisionRadius": 60 }
+      ],
+      "links": [
+        { "source": "n0", "target": "n1" },
+        { "source": "n1", "target": "n2" }
+      ]
+    },
+    {
+      "id": "pinned_drag_with_expanded_collision",
+      "sourceSections": ["Alpha Lifecycle/Automatic wake and reheat rules", "Force Model/Collision"],
+      "tolerance": 0.0001,
+      "nodes": [
+        { "id": "n0", "x": 0, "y": 0, "vx": 0, "vy": 0, "fx": 40, "fy": 20, "weight": 1, "collisionRadius": 72 },
+        { "id": "n1", "x": 90, "y": 20, "vx": 0, "vy": 0, "fx": null, "fy": null, "weight": 1, "collisionRadius": 60 }
+      ],
+      "links": [
+        { "source": "n0", "target": "n1" }
+      ]
+    },
+    {
+      "id": "topology_preservation_seed_input",
+      "sourceSections": ["Topology Updates and Position Preservation/In-place reconciliation", "Topology Updates and Position Preservation/Placement of newly added nodes"],
+      "tolerance": 0.0001,
+      "nodes": [
+        { "id": "n0", "x": -120, "y": 30, "vx": 0.5, "vy": -0.25, "fx": null, "fy": null, "weight": 2, "collisionRadius": 60 },
+        { "id": "n1", "x": 120, "y": 30, "vx": -0.5, "vy": -0.25, "fx": null, "fy": null, "weight": 2, "collisionRadius": 60 },
+        { "id": "n2", "x": 0, "y": 45, "vx": 0, "vy": 0, "fx": null, "fy": null, "weight": 2, "collisionRadius": 60 }
+      ],
+      "links": [
+        { "source": "n0", "target": "n1" },
+        { "source": "n0", "target": "n2" },
+        { "source": "n1", "target": "n2" }
+      ]
+    }
+  ]
+}
+

@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "authority": "wiki/projects/beautiful_graph/obsidian_default_graph_physics.md",
+  "requirements": [
+    { "id": "force_defaults", "sourceSection": "Exact Default Force Values", "owner": "force_controls", "proof": "unit" },
+    { "id": "slider_conversions", "sourceSection": "Exact Default Force Values/Slider conversion formulas", "owner": "force_controls", "proof": "unit" },
+    { "id": "center_xy", "sourceSection": "Force Model/Centering", "owner": "engine_conformance", "proof": "fixture" },
+    { "id": "degree_normalized_links", "sourceSection": "Force Model/Link springs", "owner": "engine_conformance", "proof": "fixture" },
+    { "id": "barnes_hut_repulsion", "sourceSection": "Force Model/Repulsion", "owner": "engine_conformance", "proof": "fixture_and_benchmark" },
+    { "id": "continuous_collision", "sourceSection": "Force Model/Collision", "owner": "engine_conformance", "proof": "fixture" },
+    { "id": "integration_damping", "sourceSection": "Force Model/Integration and damping", "owner": "engine_conformance", "proof": "fixture" },
+    { "id": "alpha_recurrence", "sourceSection": "Alpha Lifecycle", "owner": "worker_lifecycle", "proof": "unit" },
+    { "id": "automatic_wake", "sourceSection": "Alpha Lifecycle/Automatic wake and reheat rules", "owner": "worker_lifecycle", "proof": "protocol" },
+    { "id": "physics_sleep", "sourceSection": "Alpha Lifecycle/Sleep behavior", "owner": "worker_lifecycle", "proof": "timer_instrumentation" },
+    { "id": "worker_cadence", "sourceSection": "Worker Architecture and Performance/Worker scheduling", "owner": "worker_lifecycle", "proof": "timer_instrumentation" },
+    { "id": "wasm_js_equivalence", "sourceSection": "Worker Architecture and Performance", "owner": "engine_conformance", "proof": "fixture" },
+    { "id": "shared_transport", "sourceSection": "Coordinate Transport/SharedArrayBuffer path", "owner": "coordinate_transport", "proof": "identity_and_race" },
+    { "id": "transfer_transport", "sourceSection": "Coordinate Transport/Transferable ArrayBuffer fallback", "owner": "coordinate_transport", "proof": "ownership" },
+    { "id": "latest_result", "sourceSection": "Coordinate Transport/Latest-result coalescing", "owner": "coordinate_transport", "proof": "queue_bound" },
+    { "id": "topology_reconciliation", "sourceSection": "Topology Updates and Position Preservation/In-place reconciliation", "owner": "topology", "proof": "identity" },
+    { "id": "new_node_seeding", "sourceSection": "Topology Updates and Position Preservation/Placement of newly added nodes", "owner": "topology", "proof": "deterministic_rng" },
+    { "id": "render_sleep", "sourceSection": "Rendering Architecture and Performance/Render wake and sleep", "owner": "renderer_lifecycle", "proof": "frame_instrumentation" },
+    { "id": "lazy_graphics", "sourceSection": "Rendering Architecture and Performance/Lazy graphics creation", "owner": "renderer_lifecycle", "proof": "admission_instrumentation" },
+    { "id": "viewport_culling", "sourceSection": "Rendering Architecture and Performance/Viewport visibility", "owner": "renderer_lifecycle", "proof": "geometry_unit" },
+    { "id": "presentation_isolation", "sourceSection": "What Produces Visible Communities", "owner": "presentation", "proof": "event_matrix" }
+  ]
+}
+

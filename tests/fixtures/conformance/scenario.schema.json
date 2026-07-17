@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://beautiful-graph.local/schemas/conformance-scenario-v1.json",
+  "title": "Beautiful Graph V2 conformance scenarios",
+  "type": "object",
+  "required": ["schema", "protocolVersion", "wasmAbiVersion", "scenarios"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": 1 },
+    "protocolVersion": { "const": 1 },
+    "wasmAbiVersion": { "const": 1 },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "sourceSections", "tolerance", "nodes", "links"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+          "sourceSections": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "tolerance": { "type": "number", "minimum": 0 },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "x", "y", "vx", "vy", "fx", "fy", "weight", "collisionRadius"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string", "pattern": "^n[0-9]+$" },
+                "x": { "type": "number" },
+                "y": { "type": "number" },
+                "vx": { "type": "number" },
+                "vy": { "type": "number" },
+                "fx": { "type": ["number", "null"] },
+                "fy": { "type": ["number", "null"] },
+                "weight": { "type": "number", "minimum": 0 },
+                "collisionRadius": { "type": "number", "minimum": 60 }
+              }
+            }
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["source", "target"],
+              "additionalProperties": false,
+              "properties": {
+                "source": { "type": "string", "pattern": "^n[0-9]+$" },
+                "target": { "type": "string", "pattern": "^n[0-9]+$" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
