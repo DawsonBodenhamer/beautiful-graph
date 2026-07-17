@@ -4,7 +4,7 @@ import {readFileSync} from "node:fs";
 import {createGraphWorkerRuntime} from "../src/worker-runtime.ts";
 import {ALPHA_MIN,AUTOMATIC_WAKE_ALPHA,DRAG_ALPHA_TARGET,WORKER_PROTOCOL_VERSION,WORKER_TICK_INTERVAL_MS,type GraphWorkerResponse} from "../src/worker-protocol.ts";
 
-const forces={center:1,repel:1,link:.04,distance:50,siblingLinkForce:1,rootLinkForce:1};
+const forces={center:1,repel:1,link:.04,distance:50};
 const nodes=[{id:"a",preserve:false,x:0,y:0,degree:1,radius:4},{id:"b",preserve:false,x:100,y:0,degree:1,radius:4}];
 const edges=[{source:"a",target:"b",forward:true,reverse:false,relationship:"cross" as const}];
 

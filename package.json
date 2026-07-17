@@ -1,13 +1,14 @@
 {
   "name": "beautiful-graph",
-  "version": "1.0.0",
-  "description": "GPU-rendered, directory-sensitive knowledge graph for Obsidian.",
+  "version": "2.0.0",
+  "description": "Desktop knowledge graph with Obsidian-style physics and Beautiful Graph presentation.",
   "main": "main.js",
   "type": "module",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build:wasm": "node tools/build-wasm.mjs",
-    "build": "npm run build:wasm && tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "build": "npm run build:wasm && tsc -noEmit -skipLibCheck && node esbuild.config.mjs production && node tools/verify-artifacts.mjs",
+    "verify:artifacts": "node tools/verify-artifacts.mjs",
     "test:rust": "cargo test --locked --workspace",
     "pretest": "npm run build:wasm",
     "test": "node --experimental-strip-types --test tests/*.test.ts",

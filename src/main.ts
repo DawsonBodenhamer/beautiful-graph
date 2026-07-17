@@ -4,7 +4,7 @@ import { BeautifulGraphSettingTab } from "./settings";
 import type { BeautifulGraphData, BeautifulGraphSettings } from "./types";
 import { DEFAULT_DISPLAY, DEFAULT_FORCES } from "./defaults";
 import { defaultGroupIcon, GROUP_PALETTE, ROOT_INDEX_COLOR } from "./groups";
-import { migrateAdaptivePanelDefaults, migrateNamedDefaults, migrateResponsivePanels, migrateRevision10Panels, migrateRevision15Glow, migrateRevision19Settings, migrateRevision20Settings, migrateRevision25Settings, migrateRevision29Settings, removeLinkCurveState, storedNodeCount } from "./settings-migration";
+import { migrateV2Settings } from "./settings-migration";
 import { SettingsHistory } from "./settings-history";
 import { SnapshotWriteQueue } from "./snapshot-write-queue";
 import { CURRENT_LAYOUT_REVISION, loadV2Positions, V2_DATA_VERSION } from "./layout-state";
@@ -24,8 +24,7 @@ export default class BeautifulGraphPlugin extends Plugin {
   async onload():Promise<void>{
     await this.resetDiagnostics();
     const old=await this.loadData() as Partial<BeautifulGraphData>&{settings?:Partial<BeautifulGraphSettings>};
-    const oldDisplay=old?.settings?.display as Partial<BeautifulGraphSettings["display"]>&{hideSearchSatellites?:boolean}|undefined;
-    this.settings={...structuredClone(DEFAULTS),...old?.settings,forces:{...DEFAULTS.forces,...old?.settings?.forces},display:{...DEFAULTS.display,...oldDisplay,showLinkedInSearch:oldDisplay?.showLinkedInSearch??(oldDisplay?.hideSearchSatellites===undefined?false:!oldDisplay.hideSearchSatellites)},panels:{...DEFAULTS.panels,...old?.settings?.panels}};
+    this.settings={...structuredClone(DEFAULTS),...old?.settings,forces:{...DEFAULTS.forces,...old?.settings?.forces},display:{...DEFAULTS.display,...old?.settings?.display},panels:{...DEFAULTS.panels,...old?.settings?.panels}};
     const legacy=old?.settings as (Partial<BeautifulGraphSettings>&{otherVisible?:boolean;groupPalette?:string})|undefined;
     this.settings.other={...DEFAULTS.other,...legacy?.other,visible:legacy?.other?.visible??legacy?.otherVisible??true};
     this.settings.rootIndex={...DEFAULTS.rootIndex,...legacy?.rootIndex};
@@ -35,22 +34,10 @@ export default class BeautifulGraphPlugin extends Plugin {
     if(this.settings.groupPalette==="Beautiful Balanced")this.settings.groupPalette="Beautiful Default";
     this.settings.groups=(this.settings.groups??[]).map((g,i)=>({id:g.id??`${g.origin??"manual"}:${g.root}`,root:g.root,color:g.color??GROUP_PALETTE[i%GROUP_PALETTE.length]!,icon:g.icon||defaultGroupIcon(g.root),visible:g.visible!==false,origin:g.origin??"manual",order:i}));
     if((old?.version??0)<7&&this.settings.groupPalette==="Beautiful Default"){const colors:Record<string,string>={dev:"#20B2CF",outputs:"#1FDB2C",raw:"#4E606E",wiki:"#D37203"};for(const group of this.settings.groups)group.color=colors[group.root.toLowerCase()]??group.color}
-    // Versions 1-2 could persist layouts produced by unstable or grid-bounded physics.
-    migrateRevision10Panels(this.settings.panels,old?.version??0);
-    migrateResponsivePanels(this.settings.panels,old?.version??0);
-    migrateAdaptivePanelDefaults(this.settings.panels,old?.version??0);
-    if((old?.version??0)<11)this.settings.display.recenterOnFocus=false;
-    migrateRevision15Glow(this.settings.display,old?.version??0);
-    const namedDefaultMigration=migrateNamedDefaults(this.settings,old?.version??0);
-    const revision19Migration=migrateRevision19Settings(this.settings,old?.version??0);
-    const revision20Migration=migrateRevision20Settings(this.settings,old?.version??0);
-    const revision25Migration=migrateRevision25Settings(this.settings,old?.version??0);
-    const revision29Migration=migrateRevision29Settings(this.settings,old?.version??0);
-    const linkCurveMigration=removeLinkCurveState(this.settings);
-    const settingRecord=this.settings as unknown as {storedNodeCount?:unknown;savedNodeCount?:unknown};this.settings.storedNodeCount=storedNodeCount(settingRecord.storedNodeCount);delete settingRecord.savedNodeCount;
+    const v2Migration=migrateV2Settings(this.settings,old?.version??0,DEFAULT_FORCES);
     this.settingsHistory.setLimit(this.settings.historyLimit);
     const positions=loadV2Positions(old?.version??0,old?.layoutRevision,old?.positions);this.data={version:V2_DATA_VERSION,layoutRevision:Object.keys(positions).length?CURRENT_LAYOUT_REVISION:0,settings:this.settings,positions};
-    if((old?.version??0)!==V2_DATA_VERSION||namedDefaultMigration.forces||namedDefaultMigration.display||revision19Migration||revision20Migration||revision25Migration||revision29Migration||linkCurveMigration)await this.persistData();
+    if((old?.version??0)!==V2_DATA_VERSION||v2Migration)await this.persistData();
     this.registerView(BEAUTIFUL_GRAPH_VIEW,(leaf)=>new BeautifulGraphView(leaf,this));
     this.addCommand({id:"open-beautiful-graph",name:"Open Beautiful Graph",callback:()=>void this.openGraph()});
     this.addRibbonIcon("orbit","Open Beautiful Graph",()=>void this.openGraph());
