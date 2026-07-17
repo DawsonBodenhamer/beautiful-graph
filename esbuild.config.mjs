@@ -36,7 +36,7 @@ const mainContext = await esbuild.context({...shared,
   format: "cjs",
   outfile: "main.js",
 });
-const workerContext=await esbuild.context({...shared,entryPoints:["src/graph-worker.ts"],platform:"node",format:"cjs",outfile:"graph-worker.js"});
+const workerContext=await esbuild.context({...shared,entryPoints:["src/graph-worker.ts"],platform:"browser",format:"iife",outfile:"graph-worker.js"});
 
 if (production) {
   await Promise.all([mainContext.rebuild(),workerContext.rebuild()]);

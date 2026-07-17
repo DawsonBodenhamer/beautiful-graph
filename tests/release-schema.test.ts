@@ -45,9 +45,11 @@ test("worker assets resolve from the installed plugin directory and diagnostics 
   assert.match(view,/manifest\.dir/);
   assert.match(view,/adapter\.getFullPath\(`\$\{directory\}\/\$\{GRAPH_WORKER_ASSET\}`\)/);
   assert.match(view,/adapter instanceof FileSystemAdapter/);
-  assert.match(factory,/node:worker_threads/);
-  assert.match(build,/platform:"node",format:"cjs"/);
+  assert.match(factory,/data:text\/javascript;base64/);
+  assert.doesNotMatch(factory,/Blob|createObjectURL|worker_threads/);
+  assert.match(build,/platform:"browser",format:"iife"/);
   assert.match(view,/physics-engine-fallback/);
   assert.match(view,/physics-engine-selected/);
-  assert.match(worker,/readFile\(data\.wasmPath/);
+  assert.match(worker,/GRAPH_WORKER_BOOTSTRAP/);
+  assert.match(worker,/createPreferredSimulationEngine\(wasm\)/);
 });

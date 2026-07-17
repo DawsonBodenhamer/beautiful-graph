@@ -1,16 +1,25 @@
-import {readFile} from "node:fs/promises";
-import {parentPort,workerData} from "node:worker_threads";
+import {GRAPH_WORKER_BOOTSTRAP} from "./worker-bootstrap.ts";
 import {createGraphWorkerRuntime} from "./worker-runtime.ts";
 import {createPreferredSimulationEngine} from "./wasm-simulation-engine.ts";
 
-const port=parentPort,data=workerData as {wasmPath?:unknown};
-if(!port)throw new Error("Beautiful Graph physics must run in a worker thread.");
-if(typeof data.wasmPath!=="string"||!data.wasmPath)throw new Error("Beautiful Graph worker did not receive graph-sim.wasm.");
+type BootstrapMessage={type:typeof GRAPH_WORKER_BOOTSTRAP;wasm:ArrayBuffer};
+const scope=self as unknown as {postMessage:(message:unknown,transfer?:Transferable[])=>void;setTimeout:(callback:()=>void,delay:number)=>number;clearTimeout:(timer:number)=>void;onmessage:((event:MessageEvent)=>void)|null};
+let runtime:ReturnType<typeof createGraphWorkerRuntime>|undefined;
+const pending:unknown[]=[];
 
-const runtime=createGraphWorkerRuntime({
-  post:(message,transfer)=>port.postMessage(message,transfer as never[]|undefined),
-  setTimer:(callback,delay)=>setTimeout(callback,delay),
-  clearTimer:timer=>clearTimeout(timer as ReturnType<typeof setTimeout>),
-  createEngine:async()=>createPreferredSimulationEngine(await readFile(data.wasmPath as string)),
-});
-port.on("message",message=>runtime.onMessage(message));
+function bootstrap(wasm:ArrayBuffer):void {
+  if(runtime)return;
+  runtime=createGraphWorkerRuntime({
+    post:(message,transfer)=>scope.postMessage(message,transfer??[]),
+    setTimer:(callback,delay)=>scope.setTimeout(callback,delay),
+    clearTimer:timer=>scope.clearTimeout(timer as number),
+    createEngine:()=>createPreferredSimulationEngine(wasm),
+  });
+  for(const message of pending.splice(0))runtime.onMessage(message);
+}
+
+scope.onmessage=event=>{
+  const message=event.data as Partial<BootstrapMessage>;
+  if(message?.type===GRAPH_WORKER_BOOTSTRAP&&message.wasm instanceof ArrayBuffer){bootstrap(message.wasm);return}
+  if(runtime)runtime.onMessage(event.data);else pending.push(event.data);
+};

@@ -17,10 +17,11 @@ function harness(shared=false){
 
 function init(worker:ReturnType<typeof harness>,revision=1){worker.runtime.onMessage({type:"init",version:WORKER_PROTOCOL_VERSION,revision,nodes,edges,forces,heat:1})}
 
-test("named worker factory never creates a Blob compatibility worker",()=>{
+test("named worker factory encodes the installed bundle without creating a Blob worker",()=>{
   const source=readFileSync(new URL("../src/physics-worker.ts",import.meta.url),"utf8");
-  assert.match(source,/new ThreadWorker\(workerPath,\{name:"beautiful-graph-physics",workerData:\{wasmPath\}\}\)/);
-  assert.doesNotMatch(source,/Blob|createObjectURL|createPhysicsWorkerSource/);
+  assert.match(source,/new WorkerClass\(createWorkerDataUrl\(source\),\{name:"beautiful-graph-physics"\}\)/);
+  assert.match(source,/GRAPH_WORKER_BOOTSTRAP/);
+  assert.doesNotMatch(source,/Blob|createObjectURL|createPhysicsWorkerSource|worker_threads/);
 });
 
 test("initialization queues exactly one audited-cadence timer",()=>{
