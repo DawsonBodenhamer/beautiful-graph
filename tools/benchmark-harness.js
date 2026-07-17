@@ -178,7 +178,8 @@
         while (performance.now() - start < duration) {
           const phase = (performance.now() - start) / 1000;
           view.scale = initial.scale * (1 + Math.sin(phase * 1.7) * 0.15);
-          view.offset = { x: initial.offset.x + Math.sin(phase) * 80, y: initial.offset.y + Math.cos(phase * 1.3) * 60 };
+          view.offset.x = initial.offset.x + Math.sin(phase) * 80;
+          view.offset.y = initial.offset.y + Math.cos(phase * 1.3) * 60;
           view.applyCameraTransform();
           view.renderGraph();
           await new Promise(requestAnimationFrame);
