@@ -16,11 +16,11 @@ export function viewportCenter(viewport:CameraViewport):{x:number;y:number;width
   return{x:left+width/2,y:top+height/2,width,height};
 }
 
-export function fitCamera(bounds:GraphBounds,viewport:CameraViewport,padding=.06):CameraTransform {
+export function fitCamera(bounds:GraphBounds,viewport:CameraViewport,padding=.06,multiplier=1):CameraTransform {
   const usable=viewportCenter(viewport);
   const width=Math.max(100,bounds.maxX-bounds.minX),height=Math.max(100,bounds.maxY-bounds.minY);
   const availableWidth=Math.max(1,usable.width*(1-padding*2)),availableHeight=Math.max(1,usable.height*(1-padding*2));
-  const scale=Math.max(.06,Math.min(1.25,availableWidth/width,availableHeight/height));
+  const fittedScale=Math.min(1.25,availableWidth/width,availableHeight/height),scale=Math.max(.06,Math.min(5,fittedScale*Math.max(.01,multiplier)));
   return{scale,x:usable.x-(bounds.minX+bounds.maxX)/2*scale,y:usable.y-(bounds.minY+bounds.maxY)/2*scale};
 }
 

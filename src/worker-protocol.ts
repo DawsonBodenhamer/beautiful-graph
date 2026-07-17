@@ -5,13 +5,14 @@ export const ALPHA_INITIAL=1;
 export const ALPHA_TARGET_REST=0;
 export const ALPHA_MIN=.001;
 export const ALPHA_DECAY=1-Math.pow(ALPHA_MIN,1/300);
+export const STARTUP_ALPHA_DECAY=1-Math.pow(ALPHA_MIN,1/600);
 export const AUTOMATIC_WAKE_ALPHA=.3;
 export const DRAG_ALPHA_TARGET=.3;
 export const WORKER_TICK_INTERVAL_MS=1000/60;
 export const VELOCITY_RETENTION=.6;
 
 export type WorkerNode={id:string;preserve:boolean;x?:number;y?:number;degree:number;radius:number;vx?:number;vy?:number;fx?:number|null;fy?:number|null};
-export type WorkerInitMessage={type:"init";version:typeof WORKER_PROTOCOL_VERSION;revision:number;nodes:WorkerNode[];edges:GraphEdge[];forces:GraphForces;heat?:number};
+export type WorkerInitMessage={type:"init";version:typeof WORKER_PROTOCOL_VERSION;revision:number;nodes:WorkerNode[];edges:GraphEdge[];forces:GraphForces;heat?:number;startupCooling?:boolean};
 export type WorkerTopologyMessage={type:"topology";version:typeof WORKER_PROTOCOL_VERSION;revision:number;nodes:WorkerNode[];edges:GraphEdge[];heat?:number};
 export type WorkerForcesMessage={type:"forces";version:typeof WORKER_PROTOCOL_VERSION;forces:GraphForces;heat?:number};
 export type WorkerWeightMessage={type:"weights";version:typeof WORKER_PROTOCOL_VERSION;weights:Array<{id:string;degree:number;radius:number}>;heat?:number};

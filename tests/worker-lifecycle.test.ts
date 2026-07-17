@@ -16,6 +16,7 @@ function harness(shared=false){
 }
 
 function init(worker:ReturnType<typeof harness>,revision=1){worker.runtime.onMessage({type:"init",version:WORKER_PROTOCOL_VERSION,revision,nodes,edges,forces,heat:1})}
+function initStartup(worker:ReturnType<typeof harness>,revision=1){worker.runtime.onMessage({type:"init",version:WORKER_PROTOCOL_VERSION,revision,nodes,edges,forces,heat:1,startupCooling:true})}
 
 test("named worker factory encodes the installed bundle without creating a Blob worker",()=>{
   const source=readFileSync(new URL("../src/physics-worker.ts",import.meta.url),"utf8");
@@ -49,6 +50,13 @@ test("scheduler sleeps below the audited threshold and restarts on change",()=>{
   assert.ok(turns>=300);assert.equal(worker.timers.size,0);assert.ok(worker.runtime.inspect().alpha<ALPHA_MIN);assert.equal(worker.messages.at(-1)?.type,"sleep");
   worker.runtime.onMessage({type:"forces",version:WORKER_PROTOCOL_VERSION,forces,heat:AUTOMATIC_WAKE_ALPHA});
   assert.equal(worker.runtime.inspect().alpha,AUTOMATIC_WAKE_ALPHA);assert.equal(worker.timers.size,1);
+});
+
+test("startup cooling lasts roughly twice as long and later wakes use normal cooling",()=>{
+  const worker=harness();initStartup(worker);let startupTurns=0;while(worker.runNext()&&startupTurns++<700){}
+  assert.ok(startupTurns>=600&&startupTurns<610);assert.equal(worker.messages.at(-1)?.type,"sleep");
+  worker.runtime.onMessage({type:"forces",version:WORKER_PROTOCOL_VERSION,forces,heat:1});let laterTurns=0;while(worker.runNext()&&laterTurns++<400){}
+  assert.ok(laterTurns>=300&&laterTurns<310);
 });
 
 test("topology reconciliation preserves surviving state and uses one persistent runtime",()=>{

@@ -14,6 +14,7 @@ export const DEFAULT_DISPLAY: GraphDisplay = {
   linkThickness: 1.3,
   glow: 0.45,
   glowSize: 1.5,
+  recenterMultiplier: 1.25,
   showSiblingLinks: false,
   showOrphans: true,
   showLinkedInSearch: false,
