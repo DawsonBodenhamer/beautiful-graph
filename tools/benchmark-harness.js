@@ -202,8 +202,9 @@
       }
     },
     async rapidDrag(view,duration){
-      const node=view.model.nodes.filter(node=>node.visible).sort((a,b)=>b.degree-a.degree)[0],canvas=view.pixi?.canvas,host=view.canvasHost;if(!node||!canvas||!host)throw new Error("Rapid-drag benchmark requires an active rendered node.");
-      const rect=host.getBoundingClientRect(),pointerId=9173,startX=rect.left+view.offset.x+node.x*view.scale,startY=rect.top+view.offset.y+node.y*view.scale,inputLatency=[];
+      const canvas=view.pixi?.canvas,host=view.canvasHost;if(!canvas||!host)throw new Error("Rapid-drag benchmark requires an active rendered node.");
+      const rect=host.getBoundingClientRect(),nodes=view.model.nodes.filter(node=>{const x=view.offset.x+node.x*view.scale,y=view.offset.y+node.y*view.scale;return node.visible&&view.views.has(node.id)&&x>=0&&x<=rect.width&&y>=0&&y<=rect.height}).sort((a,b)=>b.degree-a.degree),node=nodes[0];if(!node)throw new Error("Rapid-drag benchmark requires an on-screen rendered node.");
+      const pointerId=9173,startX=rect.left+view.offset.x+node.x*view.scale,startY=rect.top+view.offset.y+node.y*view.scale,inputLatency=[];
       canvas.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,composed:true,pointerId,button:0,buttons:1,clientX:startX,clientY:startY}));await new Promise(requestAnimationFrame);if(!view.dragged)throw new Error("Synthetic pointerdown did not enter the production drag path.");
       const started=performance.now();try{while(performance.now()-started<duration){const phase=(performance.now()-started)/180,x=startX+Math.sin(phase)*Math.min(420,rect.width*.3),y=startY+Math.cos(phase*1.37)*Math.min(280,rect.height*.25),sent=performance.now();canvas.dispatchEvent(new PointerEvent("pointermove",{bubbles:true,composed:true,pointerId,button:-1,buttons:1,clientX:x,clientY:y}));await new Promise(resolve=>requestAnimationFrame(()=>{inputLatency.push(performance.now()-sent);resolve()}))}}finally{canvas.dispatchEvent(new PointerEvent("pointermove",{bubbles:true,composed:true,pointerId,button:-1,buttons:1,clientX:startX,clientY:startY}));await new Promise(requestAnimationFrame);window.dispatchEvent(new PointerEvent("pointerup",{bubbles:true,pointerId,button:0,buttons:0,clientX:startX,clientY:startY}));await new Promise(requestAnimationFrame);if(view.dragged)throw new Error("Rapid-drag benchmark failed to release pointer ownership.")}
       return{pointerToPaintP95Ms:round(percentile95(inputLatency)),pointerToPaintMaxMs:round(Math.max(...inputLatency)),pointerSampleCount:inputLatency.length};
@@ -240,6 +241,7 @@
     Object.assign(host.style, { width: "1400px", height: "900px", maxWidth: "1400px", maxHeight: "900px" });
     try {
       await sleep(WARMUP_MS);
+      view.fit(false);await new Promise(requestAnimationFrame);
       const results = await sampleWorkload(view, "rapidDrag", workloads.rapidDrag);
       const report = { schema: 3, capturedAt: nowIso(), ...(await releaseMetadata(plugin, view, options.commit)), protocol: { runs: RUNS, runMs: RUN_MS, warmupMs: WARMUP_MS, viewport:{width:1400,height:900},naturalPaintsOnly:true,pointerToPaintP95TargetMs:33 }, results };
       await adapter.write(`${OUTPUT_ROOT}/rapid-drag.json`, `${JSON.stringify(report, null, 2)}\n`);
