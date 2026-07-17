@@ -19,6 +19,11 @@
   const nowIso = () => new Date().toISOString();
   const round = (value) => Math.round(value * 1_000) / 1_000;
 
+  function obsidianVersion() {
+    try { return global.require?.("obsidian")?.getVersion?.() || app.version || "unknown"; }
+    catch { return app.version || "unknown"; }
+  }
+
   function hash(value) {
     let result = 2166136261;
     for (const char of value) result = Math.imul(result ^ char.charCodeAt(0), 16777619);
@@ -107,7 +112,7 @@
       settingsHash:hash(JSON.stringify({forces:plugin.settings.forces,display:plugin.settings.display})),
       capturedAt: nowIso(),
       environment: {
-        obsidian: global.require?.("obsidian")?.getVersion?.() || app.version || "unknown",
+        obsidian: obsidianVersion(),
         electron: navigator.userAgent.match(/Electron\/([^ ]+)/)?.[1] || "unknown",
         operatingSystem: navigator.userAgent,
         devicePixelRatio: global.devicePixelRatio,
@@ -210,11 +215,11 @@
     const host = view.contentEl;
     const previous = { width: host.style.width, height: host.style.height, maxWidth: host.style.maxWidth, maxHeight: host.style.maxHeight };
     Object.assign(host.style, { width: "1400px", height: "900px", maxWidth: "1400px", maxHeight: "900px" });
-    await sleep(WARMUP_MS);
-    const capturedFixture = fixture(plugin, view);
-    await adapter.write(`${OUTPUT_ROOT}/topology.json`, `${JSON.stringify(capturedFixture, null, 2)}\n`);
     const results = [];
     try {
+      await sleep(WARMUP_MS);
+      const capturedFixture = fixture(plugin, view);
+      await adapter.write(`${OUTPUT_ROOT}/topology.json`, `${JSON.stringify(capturedFixture, null, 2)}\n`);
       for (const [name, drive] of Object.entries(workloads)) results.push(...await sampleWorkload(view, name, drive));
     } finally {
       Object.assign(host.style, previous);

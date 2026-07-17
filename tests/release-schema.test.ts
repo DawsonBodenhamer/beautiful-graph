@@ -33,6 +33,7 @@ test("Phase 8 verification fails closed on runtime evidence and installed hashes
   assert.match(verify,/representativeNodeTolerance=\.05/);
   assert.match(harness,/artifactHashes/);
   assert.match(harness,/getRuntimeDiagnostics/);
+  assert.match(harness,/function obsidianVersion\(\)/);
 });
 
 test("production source has no dormant V1 force or Tune paths",()=>{
