@@ -52,6 +52,7 @@ test("worker assets resolve from the installed plugin directory and diagnostics 
   assert.match(build,/platform:"browser",format:"iife"/);
   assert.match(view,/physics-engine-fallback/);
   assert.match(view,/physics-engine-selected/);
+  assert.match(view,/physics-worker-failure/);
   assert.match(worker,/GRAPH_WORKER_BOOTSTRAP/);
   assert.match(worker,/createPreferredSimulationEngine\(wasm\)/);
 });

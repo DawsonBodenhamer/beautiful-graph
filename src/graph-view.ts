@@ -251,6 +251,7 @@ export class BeautifulGraphView extends ItemView {
 
   private failPhysicsWorker(worker:PhysicsWorker,reason:string):void {
     if(this.worker!==worker)return;
+    this.plugin.logDiagnostic("physics-worker-failure",{reason});
     worker.terminate();this.worker=undefined;this.workerNodeIds.clear();this.coordinateResults.clear();
     if(this.startupPhase==="building"||this.startupPhase==="prepared"||this.startupPhase==="settling"){this.degradeStartup("worker-error");return}
     this.renderGraph();new Notice(`${reason} The last valid layout was preserved.`);
