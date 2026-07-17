@@ -86,6 +86,7 @@ export class BeautifulGraphView extends ItemView {
   private nodeIndex=new Map<string,GraphNode>();
   private views = new Map<string, NodeView>();
   private edgeViews = new Map<string,EdgeView>();
+  private edgeIndex = new Map<string,GraphModel["edges"][number]>();
   private adjacency = new Map<string, Set<string>>();
   private worker?: PhysicsWorker;
   private workerNodeIds = new Set<string>();
@@ -303,8 +304,9 @@ export class BeautifulGraphView extends ItemView {
   }
 
   private rebuildAdjacency():void{
-    this.adjacency.clear();
+    this.adjacency.clear();this.edgeIndex.clear();
     for (const edge of this.model.edges) {
+      this.edgeIndex.set(this.edgeKey(edge.source,edge.target),edge);
       if (!this.adjacency.has(edge.source)) this.adjacency.set(edge.source, new Set());
       if (!this.adjacency.has(edge.target)) this.adjacency.set(edge.target, new Set());
       this.adjacency.get(edge.source)?.add(edge.target); this.adjacency.get(edge.target)?.add(edge.source);
@@ -314,13 +316,13 @@ export class BeautifulGraphView extends ItemView {
   private populateScene():boolean{
     const present=new Set(this.views.keys()),viewport=this.cameraViewport(),center={x:(viewport.width/2-this.offset.x)/this.scale,y:(viewport.height/2-this.offset.y)/this.scale},batch=nearestMissing(this.model.nodes,present,center,MAX_NODE_VIEWS_PER_FRAME);
     if(batch.length){this.startupMetrics.maxNodeBatch=Math.max(this.startupMetrics.maxNodeBatch??0,batch.length);this.startupMetrics.lazyFrames=(this.startupMetrics.lazyFrames??0)+1}for(const node of batch){if(this.closed)break;this.visibility.set(node.id,node.visible?1:0);this.createNodeView(node)}
-    this.admitEdgeViews();
+    if(batch.length)this.admitEdgeViews();
     if(!this.startupFirstBatchRecorded&&(this.startupPhase==="prepared"||this.startupPhase==="settling")){this.startupFirstBatchRecorded=true;this.startupMetrics.firstNodeCount=this.views.size;this.startupMetrics.firstEdgeCount=this.edgeViews.size;this.startupMetrics.firstGroupLabelCount=[...this.views.values()].filter(view=>view.node.alwaysLabel&&view.node.visible&&view.label).length;this.startupMetrics.firstPaintReady=this.views.size===this.model.nodes.length}
     return this.views.size<this.model.nodes.length;
   }
 
   private edgeKey(source:string,target:string):string{return `${source}\0${target}`}
-  private admitEdgeViews():void {const edgeByKey=new Map(this.model.edges.map(edge=>[this.edgeKey(edge.source,edge.target),edge])),wanted=new Set([...edgeByKey].filter(([,edge])=>this.views.has(edge.source)&&this.views.has(edge.target)).map(([key])=>key));reconcilePersistentObjects(wanted,this.edgeViews,key=>{const edge=edgeByKey.get(key)!,graphics=new Graphics(),focus=new Graphics(),arrow=new Graphics();graphics.eventMode="none";focus.eventMode="none";arrow.eventMode="none";this.links.addChild(graphics,arrow);this.focusLinks.addChild(focus);return{source:edge.source,target:edge.target,graphics,focus,arrow}},view=>this.destroyEdgeView(view))}
+  private admitEdgeViews():void {const wanted=new Set([...this.edgeIndex].filter(([,edge])=>this.views.has(edge.source)&&this.views.has(edge.target)).map(([key])=>key));reconcilePersistentObjects(wanted,this.edgeViews,key=>{const edge=this.edgeIndex.get(key)!,graphics=new Graphics(),focus=new Graphics(),arrow=new Graphics();graphics.eventMode="none";focus.eventMode="none";arrow.eventMode="none";this.links.addChild(graphics,arrow);this.focusLinks.addChild(focus);return{source:edge.source,target:edge.target,graphics,focus,arrow}},view=>this.destroyEdgeView(view))}
   private destroyEdgeView(view:EdgeView):void{view.graphics.destroy();view.focus.destroy();view.arrow.destroy()}
 
   private createNodeView(node: GraphNode): void {
@@ -370,10 +372,10 @@ export class BeautifulGraphView extends ItemView {
     this.focusWorld.position.set(this.offset.x,this.offset.y);this.focusWorld.scale.set(this.scale);
     this.tetherWorld.position.set(this.offset.x,this.offset.y);this.tetherWorld.scale.set(this.scale);this.labelWorld.position.set(this.offset.x,this.offset.y);this.labelWorld.scale.set(this.scale);
     this.focusBlur.strength=this.focusProgress*1.4;this.scene.filters=this.focusProgress>.01&&!this.dragged?[this.focusBlur]:[];if(this.pixi)this.scene.filterArea=this.pixi.screen;
-    const visible = new Map(this.model.nodes.filter((n) => (this.visibility.get(n.id)??0)>.01).map((n) => [n.id, n])),now=performance.now();
+    const now=performance.now();
     if((dirty&(PresentationDirty.Lens|PresentationDirty.Coordinates|PresentationDirty.Camera))&&this.lensGeometryDirty){if(!this.zoomAnimating&&now-this.lastTerritoryUpdate>80){this.lastTerritoryUpdate=now;this.lensGeometryDirty=false;this.updateFolderLens()}else{this.presentationInvalidation.mark(PresentationDirty.Lens);this.renderIdle.changed()}}
-    const focusRoots=this.activeFocusRoots(),focusedNodes=this.focusedNodeIds(focusRoots),hasFocus=focusRoots.size>0,edgeByKey=new Map(this.model.edges.map(edge=>[this.edgeKey(edge.source,edge.target),edge])),linkViewport=worldViewport(this.contentEl.clientWidth,this.contentEl.clientHeight,this.scale,this.offset,24);
-    for(const [key,view] of this.edgeViews){const edge=edgeByKey.get(key),a=visible.get(view.source),b=visible.get(view.target),ar=a?this.searchRoles.get(a.id):undefined,br=b?this.searchRoles.get(b.id):undefined,allowed=!!edge&&!!a&&!!b&&ar!=="hidden"&&br!=="hidden"&&!(ar==="context"&&br==="context")&&(this.plugin.settings.display.showSiblingLinks||edge.relationship!=="sibling");if(!allowed||!a||!b||!segmentIntersectsViewport(a,b,linkViewport)){view.graphics.visible=false;view.focus.visible=false;view.arrow.visible=false;continue}const related=!hasFocus||focusRoots.has(a.id)||focusRoots.has(b.id),satelliteLink=ar==="context"||br==="context",lensEdgeAlpha=this.activeLenses.size&&!(this.lensMembers.has(a.id)&&this.lensMembers.has(b.id))?.175:1,edgeAlpha=(satelliteLink?.16:.32)*lensEdgeAlpha,width=this.plugin.settings.display.linkThickness/this.scale,color=related?0x668899:0x334455;view.graphics.visible=true;view.graphics.clear().moveTo(a.x,a.y).lineTo(b.x,b.y).stroke({color,alpha:edgeAlpha,width});view.focus.visible=hasFocus&&related;if(view.focus.visible)view.focus.clear().moveTo(a.x,a.y).lineTo(b.x,b.y).stroke({color:0x7da8b8,alpha:.42,width});view.arrow.visible=this.plugin.settings.display.arrows&&(edge.forward||edge.reverse);if(view.arrow.visible){view.arrow.clear();if(edge.forward)this.drawArrow(view.arrow,a,b,color,edgeAlpha);if(edge.reverse)this.drawArrow(view.arrow,b,a,color,edgeAlpha)}}
+    const focusRoots=this.activeFocusRoots(),focusedNodes=this.focusedNodeIds(focusRoots),hasFocus=focusRoots.size>0,linkViewport=worldViewport(this.contentEl.clientWidth,this.contentEl.clientHeight,this.scale,this.offset,24);
+    for(const [key,view] of this.edgeViews){const edge=this.edgeIndex.get(key),source=this.nodeIndex.get(view.source),target=this.nodeIndex.get(view.target),a=source&&(this.visibility.get(source.id)??0)>.01?source:undefined,b=target&&(this.visibility.get(target.id)??0)>.01?target:undefined,ar=a?this.searchRoles.get(a.id):undefined,br=b?this.searchRoles.get(b.id):undefined,allowed=!!edge&&!!a&&!!b&&ar!=="hidden"&&br!=="hidden"&&!(ar==="context"&&br==="context")&&(this.plugin.settings.display.showSiblingLinks||edge.relationship!=="sibling");if(!allowed||!a||!b||!edge||!segmentIntersectsViewport(a,b,linkViewport)){view.graphics.visible=false;view.focus.visible=false;view.arrow.visible=false;continue}const related=!hasFocus||focusRoots.has(a.id)||focusRoots.has(b.id),satelliteLink=ar==="context"||br==="context",lensEdgeAlpha=this.activeLenses.size&&!(this.lensMembers.has(a.id)&&this.lensMembers.has(b.id))?.175:1,edgeAlpha=(satelliteLink?.16:.32)*lensEdgeAlpha,width=this.plugin.settings.display.linkThickness/this.scale,color=related?0x668899:0x334455;view.graphics.visible=true;view.graphics.clear().moveTo(a.x,a.y).lineTo(b.x,b.y).stroke({color,alpha:edgeAlpha,width});view.focus.visible=hasFocus&&related;if(view.focus.visible)view.focus.clear().moveTo(a.x,a.y).lineTo(b.x,b.y).stroke({color:0x7da8b8,alpha:.42,width});view.arrow.visible=this.plugin.settings.display.arrows&&(edge.forward||edge.reverse);if(view.arrow.visible){view.arrow.clear();if(edge.forward)this.drawArrow(view.arrow,a,b,color,edgeAlpha);if(edge.reverse)this.drawArrow(view.arrow,b,a,color,edgeAlpha)}}
     for (const view of this.views.values()) this.updateNodeView(view, !hasFocus || focusedNodes.has(view.node.id));
     if((dirty&(PresentationDirty.Labels|PresentationDirty.Coordinates|PresentationDirty.Camera|PresentationDirty.Focus))||this.labelLayoutDirty||this.zoomAnimating)this.layoutLabels();
     this.applyFocusFrame();
@@ -618,7 +620,7 @@ export class BeautifulGraphView extends ItemView {
     for(const id of reconciliation.removedIds){const view=this.views.get(id);if(view)this.destroyNodeView(view);this.views.delete(id);this.visibility.delete(id);this.pendingLabels.delete(id)}
     for(const node of reconciliation.nodes){const view=this.views.get(node.id);if(view){view.node=node;view.styleKey=undefined;if(view.label&&view.label.text!==node.label){view.label.text=node.label;view.labelMetrics=undefined;if(view.labelBg)this.drawLabelBackground(view.labelBg,view.label,node.color)}if(view.icon)view.icon.text=node.icon}}
     for(const node of reconciliation.added)this.visibility.set(node.id,node.visible?1:0);
-    this.model={nodes:reconciliation.nodes,edges:next.edges};this.nodeIndex=new Map(this.model.nodes.map(node=>[node.id,node]));const wantedEdges=new Set(this.model.edges.map(edge=>this.edgeKey(edge.source,edge.target)));for(const [key,view] of this.edgeViews)if(!wantedEdges.has(key)){this.destroyEdgeView(view);this.edgeViews.delete(key)}this.minRadius=Math.min(...this.model.nodes.map(node=>node.radius));this.maxRadius=Math.max(...this.model.nodes.map(node=>node.radius));this.rebuildAdjacency();this.startActiveWorker(true);this.renderGraph();
+    this.model={nodes:reconciliation.nodes,edges:next.edges};this.nodeIndex=new Map(this.model.nodes.map(node=>[node.id,node]));const wantedEdges=new Set(this.model.edges.map(edge=>this.edgeKey(edge.source,edge.target)));for(const [key,view] of this.edgeViews)if(!wantedEdges.has(key)){this.destroyEdgeView(view);this.edgeViews.delete(key)}this.minRadius=Math.min(...this.model.nodes.map(node=>node.radius));this.maxRadius=Math.max(...this.model.nodes.map(node=>node.radius));this.rebuildAdjacency();this.admitEdgeViews();this.startActiveWorker(true);this.renderGraph();
   }
   private destroyNodeView(view:NodeView):void{for(const child of [view.glow,view.surface,view.icon,view.label,view.labelBg,view.leader])child?.destroy()}
   private beginNodeDrag(node:GraphNode,pointerId:number,clientX:number,clientY:number,additive:boolean):void {const host=this.canvasHost;if(!host)return;this.cancelHoverIntent();this.pendingFocusAdditive=additive;this.dragged=node;this.dragButtons=1;this.dragState=beginDrag(pointerId,{x:clientX,y:clientY},node,host.getBoundingClientRect(),{scale:this.scale,x:this.offset.x,y:this.offset.y});this.ensureLabel(node);this.hovered=node;this.setFocusLayers();this.renderGraph();this.animateFocus(1);try{host.setPointerCapture(pointerId)}catch{/** Window fallbacks retain ownership when capture is unavailable. */}host.focus({preventScroll:true})}
