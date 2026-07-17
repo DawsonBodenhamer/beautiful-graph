@@ -50,3 +50,9 @@ test("topology reconciliation preserves surviving engine records, coordinates, a
   const fixture=fixtures[0]!,engines=[new JavaScriptSimulationEngine(),await createWasmSimulationEngine(wasmBytes)];
   for(const engine of engines){engine.reconcile(nodes(fixture),edges(fixture));engine.updateForces(DEFAULT_FORCES);engine.tick(.8);const survivor=engine.snapshot()[0]!,before={x:survivor.x,y:survivor.y,vx:survivor.vx,vy:survivor.vy};engine.reconcile([{id:survivor.id,preserve:true,degree:9,radius:70},{id:"added",preserve:false,x:12,y:34,degree:0,radius:4}],[]);assert.equal(engine.snapshot()[0],survivor);assert.deepEqual({x:survivor.x,y:survivor.y,vx:survivor.vx,vy:survivor.vy},before);assert.equal(survivor.degree,9);assert.deepEqual({x:engine.snapshot()[1]?.x,y:engine.snapshot()[1]?.y},{x:12,y:34});engine.dispose()}
 });
+
+test("Wasm refreshes detached memory views after representative quadtree growth",async()=>{
+  const engine=await createWasmSimulationEngine(wasmBytes),large=Array.from({length:1200},(_,index)=>({id:`node-${index}`,preserve:false,x:(index%40)*250,y:Math.floor(index/40)*250,degree:1,radius:4}));
+  engine.reconcile(large,[]);engine.updateForces(DEFAULT_FORCES);engine.tick(1);engine.tick(.98);
+  assert.ok(engine.snapshot().every(node=>[node.x,node.y,node.vx,node.vy].every(Number.isFinite)));engine.dispose();
+});

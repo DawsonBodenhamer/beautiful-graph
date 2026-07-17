@@ -24,11 +24,12 @@ export class WasmSimulationEngine implements SimulationEngine{
 
   tick(alpha:number):void{
     const nodePointer=this.wasm.bg_reserve_nodes(this.nodes.length),linkPointer=this.wasm.bg_reserve_links(this.edges.length);
-    const values=new Float64Array(this.wasm.memory.buffer,nodePointer,this.nodes.length*NODE_WIDTH),links=new Uint32Array(this.wasm.memory.buffer,linkPointer,this.edges.length*LINK_WIDTH);
+    let values=new Float64Array(this.wasm.memory.buffer,nodePointer,this.nodes.length*NODE_WIDTH);const links=new Uint32Array(this.wasm.memory.buffer,linkPointer,this.edges.length*LINK_WIDTH);
     for(let index=0;index<this.nodes.length;index++){const node=this.nodes[index]!,offset=index*NODE_WIDTH;values.set([node.x,node.y,node.vx,node.vy,node.fx??0,node.fy??0,node.degree,node.radius,node.fx===null?0:1,node.fy===null?0:1],offset)}
     for(let index=0;index<this.edges.length;index++){const edge=this.edges[index]!,offset=index*LINK_WIDTH;links[offset]=edge.source;links[offset+1]=edge.target}
     const status=this.wasm.bg_tick(this.nodes.length,this.edges.length,alpha,this.forces.center,this.forces.charge,this.forces.link,this.forces.distance);
     if(status!==0||this.wasm.bg_validate_finite(this.nodes.length)!==0)throw new Error(`Wasm simulation rejected tick with status ${status}.`);
+    values=new Float64Array(this.wasm.memory.buffer,nodePointer,this.nodes.length*NODE_WIDTH);
     for(let index=0;index<this.nodes.length;index++){const node=this.nodes[index]!,offset=index*NODE_WIDTH;node.x=values[offset]!;node.y=values[offset+1]!;node.vx=values[offset+2]!;node.vy=values[offset+3]!}
   }
 }
