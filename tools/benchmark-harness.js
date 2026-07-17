@@ -20,8 +20,9 @@
   const round = (value) => Math.round(value * 1_000) / 1_000;
 
   function obsidianVersion() {
-    try { return global.require?.("obsidian")?.getVersion?.() || app.version || "unknown"; }
-    catch { return app.version || "unknown"; }
+    const embedded=navigator.userAgent.match(/obsidian\/([^ ]+)/i)?.[1];
+    try { return global.require?.("obsidian")?.getVersion?.() || app.version || embedded || "unknown"; }
+    catch { return app.version || embedded || "unknown"; }
   }
 
   function hash(value) {
