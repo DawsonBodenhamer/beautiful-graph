@@ -6,7 +6,10 @@
   "type": "module",
   "scripts": {
     "dev": "node esbuild.config.mjs",
-    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "build:wasm": "node tools/build-wasm.mjs",
+    "build": "npm run build:wasm && tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "test:rust": "cargo test --locked --workspace",
+    "pretest": "npm run build:wasm",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "benchmark:check": "node --check tools/benchmark-harness.js"
   },

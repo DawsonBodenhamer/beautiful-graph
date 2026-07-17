@@ -25,6 +25,7 @@ test("named worker factory never creates a Blob compatibility worker",()=>{
 
 test("initialization queues exactly one audited-cadence timer",()=>{
   const worker=harness();init(worker);
+  const ready=worker.messages.find(message=>message.type==="ready");assert.equal(ready?.type,"ready");if(ready?.type==="ready")assert.equal(ready.engine,"javascript");
   assert.equal(worker.timers.size,1);assert.equal([...worker.timers.values()][0]!.delay,WORKER_TICK_INTERVAL_MS);
   worker.runNext();assert.equal(worker.timers.size,1);assert.equal(worker.messages.filter(message=>message.type==="coordinates").length,2);
 });

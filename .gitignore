@@ -1,6 +1,7 @@
 node_modules/
 main.js
 graph-worker.js
+graph-sim.wasm
 *.map
 bin/
 build/
@@ -11,6 +12,8 @@ coverage/
 .video_frames/
 .video_review_*/
 *.log
+.tooling/
+target/
 
 # Local code-intelligence indexes
 .codegraph/

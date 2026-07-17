@@ -1,10 +1,10 @@
 import type { GraphDisplay, GraphForces } from "./types";
 
 export const DEFAULT_FORCES: GraphForces = {
-  center: 1.48,
-  repel: 2.28,
-  link: 0.034,
-  distance: 51,
+  center: 0.5187132489703118,
+  repel: 10,
+  link: 1,
+  distance: 250,
   curvature: 0,
   siblingLinkForce: 15,
   rootLinkForce: 1,
