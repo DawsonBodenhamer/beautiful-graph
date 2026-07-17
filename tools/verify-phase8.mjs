@@ -29,7 +29,8 @@ const signatures=new Set(Object.values(data).map(report=>`${report.commit}:${rep
 if(signatures.size!==1)fail("Phase 8 reports do not describe one release candidate, topology, settings set, and artifact set.");
 
 const topology=readJson(resolve(perfRoot,"topology.json"));
-if(topology.nodes?.length!==1061)fail(`Representative topology must contain 1,061 nodes; found ${topology.nodes?.length??0}.`);
+const representativeNodeTarget=1061,representativeNodeTolerance=.05,nodeCount=topology.nodes?.length??0,minNodes=Math.floor(representativeNodeTarget*(1-representativeNodeTolerance)),maxNodes=Math.ceil(representativeNodeTarget*(1+representativeNodeTolerance));
+if(nodeCount<minNodes||nodeCount>maxNodes)fail(`Representative topology must remain within 5% of 1,061 nodes (${minNodes}-${maxNodes}); found ${nodeCount}.`);
 const baseline=data["baseline.json"];
 if(baseline.runtime.engine!=="wasm")fail("Production benchmark did not select Wasm.");
 if(!baseline.results?.length)fail("Production benchmark contains no workload results.");

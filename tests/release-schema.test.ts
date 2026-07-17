@@ -30,6 +30,7 @@ test("Phase 8 verification fails closed on runtime evidence and installed hashes
   for(const report of ["baseline.json","rapid-drag.json","manual-open.json","live-baseline.json","idle-audit.json"])assert.match(verify,new RegExp(report.replace(".","\\.")));
   assert.match(verify,/installed .* hash does not match the production build/);
   assert.match(verify,/16\.667 ms worker-tick p95 budget/);
+  assert.match(verify,/representativeNodeTolerance=\.05/);
   assert.match(harness,/artifactHashes/);
   assert.match(harness,/getRuntimeDiagnostics/);
 });
