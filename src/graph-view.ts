@@ -1,7 +1,8 @@
 import { ItemView, Menu, Notice, setIcon, TFile, TFolder, WorkspaceLeaf } from "obsidian";
 import { Application, BlurFilter, Container, Graphics, Sprite, Text, TextStyle, Texture } from "pixi.js";
 import { buildGraphModel } from "./graph-model";
-import { createPhysicsWorker } from "./physics-worker";
+import { createPhysicsWorker, GRAPH_WORKER_ASSET } from "./physics-worker";
+import { AUTOMATIC_WAKE_ALPHA, WORKER_PROTOCOL_VERSION, type GraphWorkerResponse } from "./worker-protocol";
 import type BeautifulGraphPlugin from "./main";
 import type { BeautifulGraphSettings, GraphModel, GraphNode } from "./types";
 import { DEFAULT_DISPLAY, DEFAULT_FORCES } from "./defaults";
@@ -16,7 +17,6 @@ import { captureResponsiveCamera, fitCamera, radiusAwareBounds, restoreResponsiv
 import { acceptsHoverWhileDragging, beginDrag, dragPointerDisposition, endsPhysicsDrag, moveDrag, shouldClearHoverOnPointerOut, startsPhysicsDrag, suppressesPostDragTap, type DragState } from "./drag-state";
 import { tetherEndpoints } from "./tether-geometry";
 import { clampNumericValue, formatNumericValue, numericDragMultiplier, quantizeNumericValue, textFadeMaximum, type NumericControlSpec } from "./numeric-control";
-import { analyzedForceProfile as deriveAnalyzedForceProfile } from "./force-profile";
 import { rankedPositionSnapshot, prunePositionSnapshot } from "./layout-persistence";
 import { expandedFocusIds, toggledFocusRoots } from "./focus-selection";
 import { interpolateLabelOffset, labelScreenPosition } from "./label-layout";
@@ -81,7 +81,6 @@ export class BeautifulGraphView extends ItemView {
   private adjacency = new Map<string, Set<string>>();
   private worker?: Worker;
   private workerNodeIds = new Set<string>();
-  private workerNodeOrder:string[]=[];
   private workerGeneration=0;
   private scale = 1;
   private offset = { x: 0, y: 0 };
@@ -153,14 +152,11 @@ export class BeautifulGraphView extends ItemView {
   private listenersInstalled=false;
   private cancelStartupAdmission?:()=>void;
   private nodeScaleFrame=0;
-  private nodeScaleGeneration=0;
-  private pendingNodeScaleFinal=false;
   private lastLabelLayout=0;
   private labelLayoutDirty=true;
   private pendingLabels=new Set<string>();
   private labelCreationFrame=0;
   private pendingFocusAdditive=false;
-  private finalizeAfterPhysics=false;
   private physicsFinalizeTimer?:number;
   private startupLastFrame?:number;
 
@@ -205,7 +201,7 @@ export class BeautifulGraphView extends ItemView {
     this.cancelStartupAdmission=admitStartup(this.app.workspace.layoutReady,ready=>this.app.workspace.onLayoutReady(ready),metadataReady,ready=>{this.registerEvent(this.app.metadataCache.on("resolved",ready))},()=>{if(!this.closed&&this.startupPhase==="waiting")void this.beginStartup()});
   }
 
-  async onClose(): Promise<void> { this.closed=true;this.cancelStartupAdmission?.();const save=this.startupPhase==="complete";this.setStartupPhase("cancelled");this.workerGeneration++;this.plugin.unregisterGraph(this);this.panelResizeObserver?.disconnect();if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);if(this.nodeScaleFrame)cancelAnimationFrame(this.nodeScaleFrame);if(this.labelCreationFrame)cancelAnimationFrame(this.labelCreationFrame);if(this.modelRefreshTimer)window.clearTimeout(this.modelRefreshTimer);if(this.searchTimer)window.clearTimeout(this.searchTimer);for(const timer of this.folderTapTimers.values())window.clearTimeout(timer);this.cancelHoverIntent();if(save&&this.model.nodes.length)this.savePositions(); this.worker?.terminate(); this.pixi?.destroy(true);for(const texture of this.nodeTextures.values())texture.destroy(true);this.nodeTextures.clear(); }
+  async onClose(): Promise<void> { this.closed=true;this.cancelStartupAdmission?.();const save=this.startupPhase==="complete";this.setStartupPhase("cancelled");this.workerGeneration++;this.plugin.unregisterGraph(this);this.panelResizeObserver?.disconnect();if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);if(this.nodeScaleFrame)cancelAnimationFrame(this.nodeScaleFrame);if(this.labelCreationFrame)cancelAnimationFrame(this.labelCreationFrame);if(this.modelRefreshTimer)window.clearTimeout(this.modelRefreshTimer);if(this.searchTimer)window.clearTimeout(this.searchTimer);for(const timer of this.folderTapTimers.values())window.clearTimeout(timer);this.cancelHoverIntent();if(save&&this.model.nodes.length)this.savePositions();this.worker?.postMessage({type:"dispose",version:WORKER_PROTOCOL_VERSION});this.worker?.terminate(); this.pixi?.destroy(true);for(const texture of this.nodeTextures.values())texture.destroy(true);this.nodeTextures.clear(); }
 
   private setStartupPhase(phase:StartupPhase):void{this.startupPhase=phase;this.startupMetrics.phase=phase}
   private installModelListeners():void{
@@ -251,9 +247,9 @@ export class BeautifulGraphView extends ItemView {
     const poll=()=>{this.physicsFinalizeTimer=undefined;if(generation!==this.workerGeneration)return;const screenDelta=this.presentationTargetDelta()*Math.max(.08,this.scale),cameraStable=!this.startupCameraTracking||this.startupCameraResidual()<=.2;if((screenDelta<=.15||!this.physicsTargets.size)&&cameraStable||performance.now()>=deadline){this.applyPhysicsTargets();done();return}this.motionUntil=performance.now()+80;this.queueRender();this.physicsFinalizeTimer=window.setTimeout(poll,16)};
     this.motionUntil=deadline;this.physicsFinalizeTimer=window.setTimeout(poll,16);
   }
-  private failPhysicsWorker(worker:Worker,generation:number,reason:string):void {
-    if(this.worker!==worker||this.workerGeneration!==generation)return;
-    worker.terminate();this.worker=undefined;if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);this.physicsFinalizeTimer=undefined;this.workerNodeIds.clear();this.workerNodeOrder=[];this.physicsTargets.clear();this.motionUntil=0;
+  private failPhysicsWorker(worker:Worker,reason:string):void {
+    if(this.worker!==worker)return;
+    worker.terminate();this.worker=undefined;if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);this.physicsFinalizeTimer=undefined;this.workerNodeIds.clear();this.physicsTargets.clear();this.motionUntil=0;
     if(this.startupPhase==="building"||this.startupPhase==="prepared"||this.startupPhase==="settling"){this.degradeStartup("worker-error");return}
     this.renderGraph();new Notice(`${reason} The last valid layout was preserved.`);
   }
@@ -265,31 +261,21 @@ export class BeautifulGraphView extends ItemView {
   private completeStartup(metrics:Record<string,number>):void{const now=performance.now();this.recordTerminalMetrics("converged",metrics);this.setStartupPhase("complete");this.startupMetrics.presentationStableAt=now;this.startupMetrics.cameraStableAt=now;this.startupMetrics.finalCameraResidual=this.startupCameraResidual();this.plugin.markLayoutCurrent();this.savePositions();this.renderGraph();if(this.pendingModelRefresh){this.pendingModelRefresh=false;this.scheduleModelRefresh()}}
   private degradeStartup(reason:"worker-error",metrics:Record<string,number>={}):void{const now=performance.now();this.recordTerminalMetrics(reason,metrics);this.setStartupPhase("degraded");this.startupMetrics.presentationStableAt=now;this.startupMetrics.cameraStableAt=now;this.startupMetrics.finalCameraResidual=this.startupCameraResidual();this.applyPhysicsTargets();this.renderGraph();new Notice("Graph startup degraded after a physics worker error. Saved anchors were preserved.");if(this.pendingModelRefresh){this.pendingModelRefresh=false;this.scheduleModelRefresh()}}
 
-  private finishPhysicsLayout(generation:number,metrics:Record<string,number>):void {
-    this.finishPresentationTargets(generation,()=>{if(generation!==this.workerGeneration)return;if(metrics.converged){if(this.startupPhase==="degraded"){this.recordTerminalMetrics("converged",metrics);this.setStartupPhase("complete");this.startupMetrics.presentationStableAt=performance.now();this.plugin.markLayoutCurrent()}this.savePositions()}this.renderGraph()});
-  }
-
   private startActiveWorker(force=false,initial:{heat?:number;startup?:boolean}={}):void {
     this.physicsFrozen=false;
-    const active=this.model.nodes.filter(node=>node.visible),ids=activeNodeIds(this.model.nodes);if(!force&&this.worker&&sameNodeIds(ids,this.workerNodeIds))return;this.workerNodeIds=ids;
-    this.worker?.terminate();if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);this.physicsFinalizeTimer=undefined;this.physicsTargets.clear();const generation=++this.workerGeneration;this.workerNodeOrder=active.map(node=>node.id);if(initial.startup)this.startupMetrics.workerGenerations++;
-    const worker=createPhysicsWorker();this.worker = worker;
-    worker.onmessage = (event) => {
-      if(event.data.generation!==this.workerGeneration||!event.data.coords||this.physicsFrozen)return;const type=event.data.type as string;if(!["tick","converged","deadline","preview","projection","burstComplete"].includes(type)||type==="projection"&&(event.data.scaleGeneration??0)<this.nodeScaleGeneration)return;const coords=event.data.coords as Float32Array;
-      for(let index=0;index<this.workerNodeOrder.length;index++){const id=this.workerNodeOrder[index],x=coords[index*2],y=coords[index*2+1];if(id===undefined||x===undefined||y===undefined||!Number.isFinite(x)||!Number.isFinite(y)||Math.abs(x)>500000||Math.abs(y)>500000){if(id!==undefined)this.physicsTargets.delete(id);continue}if(type==="projection"){const node=this.views.get(id)?.node;if(node){node.x=x;node.y=y}this.physicsTargets.delete(id)}else this.physicsTargets.set(id,{x,y})}this.motionUntil=type==="projection"?0:performance.now()+180;if(this.activeLenses.size)this.lensGeometryDirty=true;
-      if(event.data.type==="tick")this.physicsTicks++;
-      if(type==="converged"||type==="deadline")this.lastLabelLayout=0;if(type==="converged"&&this.startupPhase==="settling"){this.startupMetrics.workerTerminalAt=performance.now();this.queueRender();this.finishInitialLayout(generation,event.data);return}if(type==="burstComplete"||(type==="converged"||type==="deadline")&&this.finalizeAfterPhysics){this.lastLabelLayout=0;this.finalizeAfterPhysics=false;this.queueRender();this.finishPhysicsLayout(generation,event.data);return}
-      this.queueRender();
-    };
-    worker.onerror=(event)=>this.failPhysicsWorker(worker,generation,`Physics worker failed: ${event.message||"unknown worker error"}`);
-    worker.onmessageerror=()=>this.failPhysicsWorker(worker,generation,"Physics worker returned an unreadable message.");
-    const edges=this.model.edges.filter(edge=>ids.has(edge.source)&&ids.has(edge.target));
-    worker.postMessage({ type: "init",generation, nodes: active.map(({id,x,y,visible,folder,degree,radius,family}) => ({id,x,y,visible,folder,degree,radius,family:this.search?"__search":family,isRootIndex:id==="index.md"})), edges, opts: this.plugin.settings.forces, nodeScale:this.plugin.settings.display.nodeSize,screenScale:this.scale,heat:initial.heat,startup:initial.startup===true });
-    if(this.searchRoles.size)worker.postMessage({type:"searchRoles",roles:[...this.searchRoles]});
+    const active=this.model.nodes.filter(node=>node.visible),ids=activeNodeIds(this.model.nodes);if(!force&&this.worker&&sameNodeIds(ids,this.workerNodeIds))return;
+    const hadWorker=!!this.worker;this.workerNodeIds=ids;const revision=++this.workerGeneration;const edges=this.model.edges.filter(edge=>ids.has(edge.source)&&ids.has(edge.target)),nodes=active.map(({id,x,y,degree,radius})=>({id,x,y,degree,radius:Math.max(4,radius*this.plugin.settings.display.nodeSize)}));
+    if(!this.worker){
+      const directory=this.plugin.manifest.dir;if(!directory){this.physicsFrozen=true;if(this.startupPhase==="settling")this.degradeStartup("worker-error");new Notice(`Beautiful Graph installation error: ${GRAPH_WORKER_ASSET} cannot be located.`);return}
+      let worker:Worker;try{worker=createPhysicsWorker(this.app.vault.adapter.getResourcePath(`${directory}/${GRAPH_WORKER_ASSET}`))}catch(error){this.physicsFrozen=true;if(this.startupPhase==="settling")this.degradeStartup("worker-error");new Notice(`Beautiful Graph installation error: ${GRAPH_WORKER_ASSET} could not be started.`);this.plugin.logDiagnostic("worker-create-failure",{error:String(error)});return}this.worker=worker;this.startupMetrics.workerGenerations++;
+      worker.onmessage=(event:MessageEvent<GraphWorkerResponse>)=>{const message=event.data;if(message.version!==WORKER_PROTOCOL_VERSION)return;if(message.type==="failure"){this.failPhysicsWorker(worker,message.message);return}if(message.type==="ready")return;if(message.revision!==this.workerGeneration||this.physicsFrozen)return;const coords=message.coords;for(let index=0;index<message.ids.length;index++){const id=message.ids[index],x=coords[index*2],y=coords[index*2+1];if(id===undefined||x===undefined||y===undefined||!Number.isFinite(x)||!Number.isFinite(y)||Math.abs(x)>500000||Math.abs(y)>500000){if(id!==undefined)this.physicsTargets.delete(id);continue}this.physicsTargets.set(id,{x,y})}this.motionUntil=performance.now()+180;if(this.activeLenses.size)this.lensGeometryDirty=true;if(message.type==="coordinates")this.physicsTicks++;if(message.type==="sleep"){this.lastLabelLayout=0;if(this.startupPhase==="settling"){this.startupMetrics.workerTerminalAt=performance.now();this.queueRender();this.finishInitialLayout(message.revision,{elapsed:0,substeps:this.physicsTicks,probes:0,p95Displacement:0,familyDrift:0,overlap:0});return}}this.queueRender()};
+      worker.onerror=event=>this.failPhysicsWorker(worker,`Physics worker failed: ${event.message||`missing ${GRAPH_WORKER_ASSET}`}`);worker.onmessageerror=()=>this.failPhysicsWorker(worker,"Physics worker returned an unreadable message.");
+    }
+    const message={type:hadWorker?"topology":"init",version:WORKER_PROTOCOL_VERSION,revision,nodes,edges,forces:this.plugin.settings.forces,heat:initial.heat??(initial.startup?1:AUTOMATIC_WAKE_ALPHA)} as const;
+    this.worker.postMessage(message);
   }
 
-  updateForces(): void { this.physicsFrozen=false;if(!this.worker){this.startActiveWorker(true,{heat:1});return}this.worker.postMessage({ type: "forces", opts: this.plugin.settings.forces }); }
-  runTuneBurst():void {this.physicsFrozen=false;if(!this.worker)this.startActiveWorker(true,{heat:0});this.worker?.postMessage({type:"tuneBurst",opts:this.plugin.settings.forces})}
+  updateForces(): void { this.physicsFrozen=false;if(!this.worker){this.startActiveWorker(true,{heat:1});return}this.worker.postMessage({type:"forces",version:WORKER_PROTOCOL_VERSION,forces:this.plugin.settings.forces,heat:AUTOMATIC_WAKE_ALPHA}); }
 
   private buildScene(): void {
     this.prepareScene();
@@ -519,14 +505,14 @@ export class BeautifulGraphView extends ItemView {
     const handles=new Map<ForceKey,NumericControlHandle>(),add=(host:HTMLElement,key:ForceKey,label:string,min:number,max:number,step:number)=>handles.set(key,this.numericControl(host,{label,value:this.plugin.settings.forces[key],min,max,step,onChange:(value,final)=>{this.plugin.settings.forces[key]=value;if(final)void this.plugin.persistData();this.updateForces()}}));
     add(body,"center","Center Force",0,100,.01);add(body,"repel","Repel Force",0,100,.01);add(body,"siblingLinkForce","Sibling Force",0,100,.01);add(body,"rootLinkForce","Root Force",0,10,.01);add(body,"link","Link Force",0,10,.001);add(body,"distance","Link Distance",0,25000,1);add(body,"curvature","Link Curve",-2,2,.01);
     const sync=()=>{for(const [key,handle] of handles)handle.setValue(this.plugin.settings.forces[key])};
-    const reset=body.createEl("button",{cls:"beautiful-panel-reset",text:"Reset Forces"});reset.onclick=()=>{this.pushHistory();this.plugin.settings.forces={...DEFAULT_FORCES};sync();this.finalizeAfterPhysics=true;void this.plugin.persistData();this.updateForces()};const tune=body.createEl("button",{cls:"beautiful-panel-reset",text:"Analyze & Tune"});tune.onclick=()=>{this.pushHistory();this.finalizeAfterPhysics=true;this.autoTuneForces();sync()};this.addPresetControls(body,"forces",sync);
+    const reset=body.createEl("button",{cls:"beautiful-panel-reset",text:"Reset Forces"});reset.onclick=()=>{this.pushHistory();this.plugin.settings.forces={...DEFAULT_FORCES};sync();void this.plugin.persistData();this.updateForces()};this.addPresetControls(body,"forces",sync);
   })}
   private createDisplayPanel():void {this.createPanel("display","Display",body=>{
     type DisplayKey="textFade"|"nodeSize"|"linkThickness"|"glow"|"glowSize";
     const handles=new Map<DisplayKey,NumericControlHandle>(),add=(key:DisplayKey,label:string,min:number,max:number|(()=>number),step:number)=>handles.set(key,this.numericControl(body,{label,value:this.plugin.settings.display[key],min,max,step,onChange:(value,final)=>{this.plugin.settings.display[key]=value;if(key==="nodeSize"){this.clampTextFade();handles.get("textFade")?.setValue(this.plugin.settings.display.textFade);this.updateNodeScale(final)}if(final)void this.plugin.persistData();this.renderGraph()}}));
     add("textFade","Text Fade",0,()=>this.textFadeMaximum(),.1);add("nodeSize","Node Size",0,16,.01);add("linkThickness","Link Size",0,32,.01);add("glow","Glow",0,4,.01);add("glowSize","Glow Size",0,12,.01);
     const sibling=this.toggle(body,"Show Sibling Links",this.plugin.settings.display.showSiblingLinks,v=>{this.plugin.settings.display.showSiblingLinks=v;void this.plugin.persistData();this.renderGraph()}),orphans=this.toggle(body,"Show Orphans",this.plugin.settings.display.showOrphans,v=>{this.plugin.settings.display.showOrphans=v;this.applyGroupChanges()}),recenter=this.toggle(body,"Center Focused Node",this.plugin.settings.display.recenterOnFocus,v=>{this.plugin.settings.display.recenterOnFocus=v;void this.plugin.persistData();this.renderGraph()});const sync=()=>{for(const [key,handle] of handles)handle.setValue(this.plugin.settings.display[key]);sibling.checked=this.plugin.settings.display.showSiblingLinks;orphans.checked=this.plugin.settings.display.showOrphans;recenter.checked=this.plugin.settings.display.recenterOnFocus};
-    const reset=body.createEl("button",{cls:"beautiful-panel-reset",text:"Reset Display"});reset.onclick=()=>{this.pushHistory();this.plugin.settings.display={...DEFAULT_DISPLAY};this.clampTextFade();sync();this.invalidateNodeStyles();this.updateNodeScale(true);void this.plugin.persistData();this.applyGroupChanges();this.renderGraph()};const tune=body.createEl("button",{cls:"beautiful-panel-reset",text:"Analyze & Tune"});tune.onclick=()=>{this.pushHistory();this.autoTuneDisplay();sync()};this.addPresetControls(body,"display",sync);
+    const reset=body.createEl("button",{cls:"beautiful-panel-reset",text:"Reset Display"});reset.onclick=()=>{this.pushHistory();this.plugin.settings.display={...DEFAULT_DISPLAY};this.clampTextFade();sync();this.invalidateNodeStyles();this.updateNodeScale(true);void this.plugin.persistData();this.applyGroupChanges();this.renderGraph()};this.addPresetControls(body,"display",sync);
   })}
   private createGuiDock():void{this.contentEl.querySelector(".beautiful-gui-dock")?.remove();const dock=this.contentEl.createDiv({cls:"beautiful-gui-dock"}),switches=dock.createDiv({cls:"beautiful-panel-switches"});for(const [id,label] of [["groups","G"],["forces","F"],["display","D"]] as const)switches.createEl("button",{text:label,attr:{"aria-label":`Show ${id} panel`}}).onclick=()=>{this.activePanelId=id;this.layoutPanels()};const reset=dock.createEl("button",{text:"Reset GUI"}),collapse=dock.createEl("button",{cls:"beautiful-gui-collapse"});reset.onclick=()=>this.resetGui();collapse.onclick=()=>{this.pushHistory();const states=Object.values(this.plugin.settings.panels),collapseTo=!states.every(state=>state.collapsed);for(const state of states)state.collapsed=collapseTo;void this.plugin.persistData();this.createPanels();this.updateGuiDockLabel()};this.updateGuiDockLabel();this.layoutPanels()}
   private updateGuiDockLabel():void{const button=this.contentEl.querySelector<HTMLButtonElement>(".beautiful-gui-collapse"),states=Object.values(this.plugin.settings.panels),all=states.length>0&&states.every(state=>state.collapsed);if(button)button.textContent=all?"Expand All":"Collapse All"}
@@ -609,10 +595,7 @@ export class BeautifulGraphView extends ItemView {
     if(forceChanged)this.updateForces();
     this.renderGraph();
   }
-  private updateNodeScale(final=false):void {this.invalidateNodeStyles();this.lensGeometryDirty=true;this.pendingNodeScaleFinal=this.pendingNodeScaleFinal||final;if(this.nodeScaleFrame)return;this.nodeScaleFrame=requestAnimationFrame(()=>{this.nodeScaleFrame=0;const scaleGeneration=++this.nodeScaleGeneration,isFinal=this.pendingNodeScaleFinal;this.pendingNodeScaleFinal=false;this.worker?.postMessage({type:"nodeScale",value:this.plugin.settings.display.nodeSize,final:isFinal,scaleGeneration,epsilonWorld:.25/Math.max(.08,this.scale)});this.renderGraph()})}
-  private analyzedForceProfile():BeautifulGraphSettings["forces"]|undefined {const nodes=this.model.nodes.filter(n=>n.visible),visibleIds=new Set(nodes.map(n=>n.id));if(!nodes.length)return;const edgeCount=this.model.edges.reduce((count,edge)=>count+Number(visibleIds.has(edge.source)&&visibleIds.has(edge.target)),0),averageDegree=edgeCount*2/nodes.length,familyCount=new Set(nodes.map(node=>node.family)).size;return deriveAnalyzedForceProfile(nodes.length,averageDegree,familyCount,this.plugin.settings.forces)}
-  private applyAnalyzedForceProfile():void {const profile=this.analyzedForceProfile();if(!profile)return;this.plugin.settings.forces=profile;void this.plugin.persistData()}
-  private autoTuneForces():void {this.applyAnalyzedForceProfile();this.runTuneBurst();new Notice("Forces analyzed. Running a bounded layout burst.")}
+  private updateNodeScale(_final=false):void {this.invalidateNodeStyles();this.lensGeometryDirty=true;if(this.nodeScaleFrame)return;this.nodeScaleFrame=requestAnimationFrame(()=>{this.nodeScaleFrame=0;this.worker?.postMessage({type:"weights",version:WORKER_PROTOCOL_VERSION,weights:this.model.nodes.filter(node=>node.visible).map(node=>({id:node.id,degree:node.degree,radius:Math.max(4,node.radius*this.plugin.settings.display.nodeSize)})),heat:AUTOMATIC_WAKE_ALPHA});this.renderGraph()})}
 
   private scheduleModelRefresh():void {
     if(this.closed)return;if(this.startupPhase!=="complete"&&this.startupPhase!=="degraded"){if(this.startupPhase==="building"||this.startupPhase==="prepared"||this.startupPhase==="settling")this.pendingModelRefresh=true;return}
@@ -632,7 +615,6 @@ export class BeautifulGraphView extends ItemView {
     this.model={nodes:reconciliation.nodes,edges:next.edges};this.minRadius=Math.min(...this.model.nodes.map(node=>node.radius));this.maxRadius=Math.max(...this.model.nodes.map(node=>node.radius));this.rebuildAdjacency();this.startActiveWorker(true,{heat:1});this.renderGraph();
   }
   private destroyNodeView(view:NodeView):void{for(const child of [view.glow,view.surface,view.icon,view.label,view.labelBg,view.leader])child?.destroy()}
-  private autoTuneDisplay():void {const count=Math.max(1,this.model.nodes.filter(n=>n.visible).length),area=Math.max(1,this.contentEl.clientWidth*this.contentEl.clientHeight),density=Math.max(.65,Math.min(1.45,Math.sqrt((count/1430)*(2073600/area))));this.plugin.settings.display={...this.plugin.settings.display,textFade:Number(Math.max(2,Math.min(80,DEFAULT_DISPLAY.textFade*Math.sqrt(density))).toFixed(3)),nodeSize:Number(Math.max(.2,Math.min(8,DEFAULT_DISPLAY.nodeSize/Math.sqrt(density))).toFixed(3)),linkThickness:Number(Math.max(.1,Math.min(6,DEFAULT_DISPLAY.linkThickness/Math.sqrt(density))).toFixed(3)),glow:DEFAULT_DISPLAY.glow,glowSize:DEFAULT_DISPLAY.glowSize};this.invalidateNodeStyles();this.updateNodeScale(true);void this.plugin.persistData();this.renderGraph()}
   private beginNodeDrag(node:GraphNode,pointerId:number,clientX:number,clientY:number,additive:boolean):void {const host=this.canvasHost;if(!host)return;this.cancelHoverIntent();this.pendingFocusAdditive=additive;this.dragged=node;this.dragButtons=1;this.dragState=beginDrag(pointerId,{x:clientX,y:clientY},node,host.getBoundingClientRect(),{scale:this.scale,x:this.offset.x,y:this.offset.y});this.ensureLabel(node);this.hovered=node;this.setFocusLayers();this.renderGraph();this.animateFocus(1);try{host.setPointerCapture(pointerId)}catch{/** Window fallbacks retain ownership when capture is unavailable. */}host.focus({preventScroll:true})}
   private releaseNode(pointerId?:number,cancelled=false):void {if(!this.dragged||pointerId!==undefined&&this.dragState?.pointerId!==pointerId)return;const node=this.dragged,moved=this.dragState?.moved===true,captured=this.dragState?.pointerId,host=this.canvasHost,additive=this.pendingFocusAdditive;this.pendingFocusAdditive=false;if(this.dragFrame){cancelAnimationFrame(this.dragFrame);this.dragFrame=0}if(endsPhysicsDrag(moved)){if(this.pendingDrag)this.worker?.postMessage({type:"dragMove",...this.pendingDrag});this.worker?.postMessage({type:"dragEnd",id:node.id})}this.pendingDrag=undefined;this.dragged=undefined;this.dragState=undefined;this.dragButtons=0;if(captured!==undefined&&host?.hasPointerCapture(captured))host.releasePointerCapture(captured);this.suppressNodeTapUntil=performance.now()+500;if(cancelled){this.clearHoverImmediate();return}this.pinFocus(node,moved?false:additive)}
   private cameraViewport():CameraViewport {const width=this.contentEl.clientWidth,height=this.contentEl.clientHeight,host=this.contentEl.getBoundingClientRect(),toolbar=this.contentEl.querySelector<HTMLElement>(".beautiful-graph-toolbar")?.getBoundingClientRect(),insetBottom=toolbar?Math.max(0,height-(toolbar.top-host.top)):0;return{width,height,insetBottom}}
