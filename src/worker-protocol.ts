@@ -10,7 +10,7 @@ export const DRAG_ALPHA_TARGET=.3;
 export const WORKER_TICK_INTERVAL_MS=1000/60;
 export const VELOCITY_RETENTION=.6;
 
-export type WorkerNode={id:string;x:number;y:number;degree:number;radius:number;vx?:number;vy?:number;fx?:number|null;fy?:number|null};
+export type WorkerNode={id:string;preserve:boolean;x?:number;y?:number;degree:number;radius:number;vx?:number;vy?:number;fx?:number|null;fy?:number|null};
 export type WorkerInitMessage={type:"init";version:typeof WORKER_PROTOCOL_VERSION;revision:number;nodes:WorkerNode[];edges:GraphEdge[];forces:GraphForces;heat?:number};
 export type WorkerTopologyMessage={type:"topology";version:typeof WORKER_PROTOCOL_VERSION;revision:number;nodes:WorkerNode[];edges:GraphEdge[];heat?:number};
 export type WorkerForcesMessage={type:"forces";version:typeof WORKER_PROTOCOL_VERSION;forces:GraphForces;heat?:number};

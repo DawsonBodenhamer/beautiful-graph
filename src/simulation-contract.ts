@@ -9,7 +9,7 @@ export const BARNES_HUT_THETA=.9;
 
 export type EngineKind="wasm"|"javascript";
 export type SimulationForces={center:number;charge:number;link:number;distance:number};
-export type SimulationNode=Required<Omit<WorkerNode,"fx"|"fy">>&{fx:number|null;fy:number|null};
+export type SimulationNode={id:string;x:number;y:number;degree:number;radius:number;vx:number;vy:number;fx:number|null;fy:number|null};
 
 export interface SimulationEngine {
   readonly kind:EngineKind;

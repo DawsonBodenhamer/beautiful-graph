@@ -12,7 +12,7 @@ type Fixture={tolerance:number;nodes:Array<{id:string;x:number;y:number;vx:numbe
 const fixturePath=new URL("fixtures/conformance/scenarios.json",import.meta.url);
 const fixtures=(JSON.parse(readFileSync(fixturePath,"utf8")) as {scenarios:Fixture[]}).scenarios;
 const wasmBytes=readFileSync(new URL("../graph-sim.wasm",import.meta.url));
-const nodes=(fixture:Fixture):WorkerNode[]=>fixture.nodes.map(node=>({...node,degree:node.weight,radius:node.collisionRadius}));
+const nodes=(fixture:Fixture):WorkerNode[]=>fixture.nodes.map(node=>({...node,preserve:false,degree:node.weight,radius:node.collisionRadius}));
 const edges=(fixture:Fixture):GraphEdge[]=>fixture.links.map(edge=>({...edge,forward:true,reverse:false,relationship:"cross"}));
 
 test("audited slider defaults convert to exact worker force values",()=>{
@@ -44,4 +44,9 @@ test("Wasm initialization rejection selects the JavaScript fallback",async()=>{
 
 test("force changes apply without reconstructing the fallback engine",()=>{
   const fixture=fixtures[0]!,engine=new JavaScriptSimulationEngine();engine.reconcile(nodes(fixture),edges(fixture));engine.updateForces(DEFAULT_FORCES);engine.tick(1);const first=engine.snapshot()[0]!.x;engine.updateForces({...DEFAULT_FORCES,center:0});engine.tick(1);assert.notEqual(engine.snapshot()[0]!.x,first);assert.equal(engine.kind,"javascript");
+});
+
+test("topology reconciliation preserves surviving engine records, coordinates, and velocities",async()=>{
+  const fixture=fixtures[0]!,engines=[new JavaScriptSimulationEngine(),await createWasmSimulationEngine(wasmBytes)];
+  for(const engine of engines){engine.reconcile(nodes(fixture),edges(fixture));engine.updateForces(DEFAULT_FORCES);engine.tick(.8);const survivor=engine.snapshot()[0]!,before={x:survivor.x,y:survivor.y,vx:survivor.vx,vy:survivor.vy};engine.reconcile([{id:survivor.id,preserve:true,degree:9,radius:70},{id:"added",preserve:false,x:12,y:34,degree:0,radius:4}],[]);assert.equal(engine.snapshot()[0],survivor);assert.deepEqual({x:survivor.x,y:survivor.y,vx:survivor.vx,vy:survivor.vy},before);assert.equal(survivor.degree,9);assert.deepEqual({x:engine.snapshot()[1]?.x,y:engine.snapshot()[1]?.y},{x:12,y:34});engine.dispose()}
 });

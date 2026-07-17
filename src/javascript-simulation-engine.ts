@@ -17,8 +17,9 @@ export class JavaScriptSimulationEngine implements SimulationEngine{
   reconcile(incoming:WorkerNode[],edges:GraphEdge[]):void{
     const prior=new Map(this.nodes.map(node=>[node.id,node]));
     this.nodes=incoming.map(node=>{
-      const old=prior.get(node.id),x=old?.x??requiredFinite(node.x),y=old?.y??requiredFinite(node.y);
-      return{id:node.id,x,y,vx:old?.vx??optionalFinite(node.vx),vy:old?.vy??optionalFinite(node.vy),fx:old?.fx??finiteOrNull(node.fx),fy:old?.fy??finiteOrNull(node.fy),degree:Math.max(1,requiredFinite(node.degree)),radius:effectiveCollisionRadius(requiredFinite(node.radius))};
+      const old=prior.get(node.id),degree=Math.max(1,requiredFinite(node.degree)),radius=effectiveCollisionRadius(requiredFinite(node.radius));
+      if(node.preserve){if(!old)throw new Error(`Cannot preserve missing simulation node ${node.id}.`);old.degree=degree;old.radius=radius;return old}
+      return{id:node.id,x:requiredFinite(node.x),y:requiredFinite(node.y),vx:optionalFinite(node.vx),vy:optionalFinite(node.vy),fx:finiteOrNull(node.fx),fy:finiteOrNull(node.fy),degree,radius};
     });
     const indexes=new Map(this.nodes.map((node,index)=>[node.id,index]));
     this.edges=edges.flatMap(edge=>{const source=indexes.get(edge.source),target=indexes.get(edge.target);return source===undefined||target===undefined||source===target?[]:[{source,target}]});

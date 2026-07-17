@@ -4,16 +4,16 @@ import { BeautifulGraphSettingTab } from "./settings";
 import type { BeautifulGraphData, BeautifulGraphSettings } from "./types";
 import { DEFAULT_DISPLAY, DEFAULT_FORCES } from "./defaults";
 import { defaultGroupIcon, GROUP_PALETTE, ROOT_INDEX_COLOR } from "./groups";
-import { migrateAdaptivePanelDefaults, migrateNamedDefaults, migrateResponsivePanels, migrateRevision10Panels, migrateRevision15Glow, migrateRevision19Settings, migrateRevision20Settings, migrateRevision25Settings, migrateRevision29Settings } from "./settings-migration";
+import { migrateAdaptivePanelDefaults, migrateNamedDefaults, migrateResponsivePanels, migrateRevision10Panels, migrateRevision15Glow, migrateRevision19Settings, migrateRevision20Settings, migrateRevision25Settings, migrateRevision29Settings, storedNodeCount } from "./settings-migration";
 import { SettingsHistory } from "./settings-history";
 import { SnapshotWriteQueue } from "./snapshot-write-queue";
-import { CURRENT_LAYOUT_REVISION, persistedLayoutRevision } from "./layout-state";
+import { CURRENT_LAYOUT_REVISION, loadV2Positions, V2_DATA_VERSION } from "./layout-state";
 
-const DEFAULTS: BeautifulGraphSettings = { replaceUnderscores:true,capitalizeDirectories:true,maxLabelDirectories:3,forces:{...DEFAULT_FORCES},display:{...DEFAULT_DISPLAY},categoryVisibility:{},groups:[],other:{visible:true,color:GROUP_PALETTE[0]!,icon:"📂",colorMode:"palette"},rootIndex:{enabled:true,color:ROOT_INDEX_COLOR,icon:"🌱",includeLinked:false},otherVisible:true,groupPalette:"Beautiful Default",groupPresets:{},panels:{groups:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13},forces:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13},display:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13}},forcePresets:{},displayPresets:{},historyLimit:50,savedNodeCount:100 };
+const DEFAULTS: BeautifulGraphSettings = { replaceUnderscores:true,capitalizeDirectories:true,maxLabelDirectories:3,forces:{...DEFAULT_FORCES},display:{...DEFAULT_DISPLAY},categoryVisibility:{},groups:[],other:{visible:true,color:GROUP_PALETTE[0]!,icon:"📂",colorMode:"palette"},rootIndex:{enabled:true,color:ROOT_INDEX_COLOR,icon:"🌱",includeLinked:false},otherVisible:true,groupPalette:"Beautiful Default",groupPresets:{},panels:{groups:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13},forces:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13},display:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13}},forcePresets:{},displayPresets:{},historyLimit:50,storedNodeCount:0 };
 
 export default class BeautifulGraphPlugin extends Plugin {
   settings: BeautifulGraphSettings = structuredClone(DEFAULTS);
-  data: BeautifulGraphData = {version:21,layoutRevision:0,settings:this.settings,positions:{}};
+  data: BeautifulGraphData = {version:V2_DATA_VERSION,layoutRevision:0,settings:this.settings,positions:{}};
   private lastGraph?: BeautifulGraphView;
   private graphViews=new Set<BeautifulGraphView>();
   private settingsHistory=new SettingsHistory<BeautifulGraphSettings>(50);
@@ -46,9 +46,10 @@ export default class BeautifulGraphPlugin extends Plugin {
     const revision20Migration=migrateRevision20Settings(this.settings,old?.version??0);
     const revision25Migration=migrateRevision25Settings(this.settings,old?.version??0);
     const revision29Migration=migrateRevision29Settings(this.settings,old?.version??0);
+    const settingRecord=this.settings as unknown as {storedNodeCount?:unknown;savedNodeCount?:unknown};this.settings.storedNodeCount=storedNodeCount(settingRecord.storedNodeCount);delete settingRecord.savedNodeCount;
     this.settingsHistory.setLimit(this.settings.historyLimit);
-    this.data={version:21,layoutRevision:persistedLayoutRevision(old?.layoutRevision),settings:this.settings,positions:(old?.version??0)>=3?(old?.positions??{}):{}};
-    if((old?.version??0)!==21||namedDefaultMigration.forces||namedDefaultMigration.display||revision19Migration||revision20Migration||revision25Migration||revision29Migration)await this.persistData();
+    const positions=loadV2Positions(old?.version??0,old?.layoutRevision,old?.positions);this.data={version:V2_DATA_VERSION,layoutRevision:Object.keys(positions).length?CURRENT_LAYOUT_REVISION:0,settings:this.settings,positions};
+    if((old?.version??0)!==V2_DATA_VERSION||namedDefaultMigration.forces||namedDefaultMigration.display||revision19Migration||revision20Migration||revision25Migration||revision29Migration)await this.persistData();
     this.registerView(BEAUTIFUL_GRAPH_VIEW,(leaf)=>new BeautifulGraphView(leaf,this));
     this.addCommand({id:"open-beautiful-graph",name:"Open Beautiful Graph",callback:()=>void this.openGraph()});
     this.addRibbonIcon("orbit","Open Beautiful Graph",()=>void this.openGraph());

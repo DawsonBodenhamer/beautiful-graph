@@ -25,7 +25,7 @@ export interface BeautifulGraphSettings {
   forcePresets: Record<string, GraphForces>;
   displayPresets: Record<string, GraphDisplay>;
   historyLimit: number;
-  savedNodeCount:number;
+  storedNodeCount:number;
 }
 export interface GraphPoint { x: number; y: number }
 export interface BeautifulGraphData { version: number; layoutRevision:number; settings: BeautifulGraphSettings; positions: Record<string, GraphPoint> }

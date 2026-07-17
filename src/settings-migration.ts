@@ -4,6 +4,8 @@ import { fallbackColorMode, paletteFallbackColor } from "./groups.ts";
 export const NEW_DEFAULT_PRESET="Make this the new defaults";
 export const REVISION_19_DEFAULT_PRESET="this preset to be new defaults";
 
+export function storedNodeCount(value:unknown):number{return typeof value==="number"&&Number.isFinite(value)?Math.max(0,Math.min(15,Math.round(value))):0}
+
 export function migrateNamedDefaults(settings:BeautifulGraphSettings,fromVersion:number):{forces:boolean;display:boolean} {
   const result={forces:false,display:false};
   if(fromVersion>=13)return result;
@@ -43,13 +45,13 @@ export function migrateRevision25Settings(settings:BeautifulGraphSettings,fromVe
   if(fromVersion>=20)return false;
   const normalize=(force:BeautifulGraphSettings["forces"]|undefined)=>{if(force&&(force.rootLinkForce===undefined||!Number.isFinite(force.rootLinkForce)))force.rootLinkForce=1};
   normalize(settings.forces);for(const preset of Object.values(settings.forcePresets??{}))normalize(preset);
-  settings.savedNodeCount=Math.max(0,Math.min(5000,Math.round(Number.isFinite(settings.savedNodeCount)?settings.savedNodeCount:100)));
+  const legacy=settings as unknown as {savedNodeCount?:number};legacy.savedNodeCount=Math.max(0,Math.min(5000,Math.round(Number.isFinite(legacy.savedNodeCount)?legacy.savedNodeCount!:100)));
   return true;
 }
 
 export function migrateRevision29Settings(settings:BeautifulGraphSettings,fromVersion:number):boolean {
   if(fromVersion>=21)return false;
-  settings.savedNodeCount=Math.max(5,Math.min(100,Math.round(Number.isFinite(settings.savedNodeCount)?settings.savedNodeCount:100)));
+  const legacy=settings as unknown as {savedNodeCount?:number};legacy.savedNodeCount=Math.max(5,Math.min(100,Math.round(Number.isFinite(legacy.savedNodeCount)?legacy.savedNodeCount!:100)));
   return true;
 }
 
