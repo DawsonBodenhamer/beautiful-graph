@@ -183,8 +183,10 @@ export class BeautifulGraphView extends ItemView {
     this.contentEl.addClass("beautiful-graph-view");
     const canvasHost = this.contentEl.createDiv({ cls: "beautiful-graph-canvas" });this.canvasHost=canvasHost;canvasHost.tabIndex=0;this.loadingEl=this.contentEl.createDiv({cls:"beautiful-graph-loading",text:"Building graph…"});
     canvasHost.addClass("is-preparing");
+    await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));if(this.closed)return;
     this.pixi = new Application();
     await this.pixi.init({ resizeTo: canvasHost, antialias: true, backgroundAlpha: 0, preference: "webgl",autoStart:false,sharedTicker:false });
+    if(this.closed)return;await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));if(this.closed)return;
     this.pixi.ticker.stop();
     this.registerEvent(this.app.workspace.on("active-leaf-change",()=>this.changed()));
     this.registerEvent(this.app.workspace.on("css-change",()=>this.changed()));
