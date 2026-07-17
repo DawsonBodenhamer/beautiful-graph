@@ -1,7 +1,7 @@
-import { ItemView, Menu, Notice, setIcon, TFile, TFolder, WorkspaceLeaf } from "obsidian";
+import { FileSystemAdapter, ItemView, Menu, Notice, setIcon, TFile, TFolder, WorkspaceLeaf } from "obsidian";
 import { Application, BlurFilter, Container, Graphics, Sprite, Text, TextStyle, Texture } from "pixi.js";
 import { buildGraphModel } from "./graph-model";
-import { createPhysicsWorker, GRAPH_WORKER_ASSET } from "./physics-worker";
+import { createPhysicsWorker, GRAPH_WASM_ASSET, GRAPH_WORKER_ASSET, type PhysicsWorker } from "./physics-worker";
 import { AUTOMATIC_WAKE_ALPHA, WORKER_PROTOCOL_VERSION, type GraphWorkerResponse, type WorkerCoordinateMessage } from "./worker-protocol";
 import {LatestCoordinateResult,readSharedCoordinates} from "./coordinate-transport";
 import type BeautifulGraphPlugin from "./main";
@@ -86,7 +86,7 @@ export class BeautifulGraphView extends ItemView {
   private views = new Map<string, NodeView>();
   private edgeViews = new Map<string,EdgeView>();
   private adjacency = new Map<string, Set<string>>();
-  private worker?: Worker;
+  private worker?: PhysicsWorker;
   private workerNodeIds = new Set<string>();
   private preparedInitialTopology?:WorkerTopology;
   private workerGeneration=0;
@@ -249,7 +249,7 @@ export class BeautifulGraphView extends ItemView {
     this.renderGraph();
   }
 
-  private failPhysicsWorker(worker:Worker,reason:string):void {
+  private failPhysicsWorker(worker:PhysicsWorker,reason:string):void {
     if(this.worker!==worker)return;
     worker.terminate();this.worker=undefined;this.workerNodeIds.clear();this.coordinateResults.clear();
     if(this.startupPhase==="building"||this.startupPhase==="prepared"||this.startupPhase==="settling"){this.degradeStartup("worker-error");return}
@@ -269,8 +269,9 @@ export class BeautifulGraphView extends ItemView {
     const hadWorker=!!this.worker,survivingIds=new Set([...this.workerNodeIds].filter(id=>ids.has(id))),topology=!hadWorker&&initial.startup&&this.preparedInitialTopology?this.preparedInitialTopology:prepareWorkerTopology(active,this.model.edges,survivingIds,hadWorker?{}:this.plugin.data.positions,Math.random,this.plugin.settings.display.nodeSize),{nodes,edges}=topology;this.preparedInitialTopology=undefined;this.workerNodeIds=ids;const revision=++this.workerGeneration;this.coordinateResults.clear();
     if(!this.worker){
       const directory=this.plugin.manifest.dir;if(!directory){this.physicsFrozen=true;if(this.startupPhase==="settling")this.degradeStartup("worker-error");new Notice(`Beautiful Graph installation error: ${GRAPH_WORKER_ASSET} cannot be located.`);return}
-      let worker:Worker;try{worker=createPhysicsWorker(this.app.vault.adapter.getResourcePath(`${directory}/${GRAPH_WORKER_ASSET}`))}catch(error){this.physicsFrozen=true;if(this.startupPhase==="settling")this.degradeStartup("worker-error");new Notice(`Beautiful Graph installation error: ${GRAPH_WORKER_ASSET} could not be started.`);this.plugin.logDiagnostic("worker-create-failure",{error:String(error)});return}this.worker=worker;this.startupMetrics.workerGenerations++;
-      worker.onmessage=(event:MessageEvent<GraphWorkerResponse>)=>{const message=event.data;if(message.version!==WORKER_PROTOCOL_VERSION)return;if(message.type==="failure"){this.failPhysicsWorker(worker,message.message);return}if(message.type==="ready"){this.runtimeDiagnostics.engine=message.engine;this.plugin.logDiagnostic(message.engine==="javascript"?"physics-engine-fallback":"physics-engine-selected",{engine:message.engine,revision:message.revision});return}if(message.revision!==this.workerGeneration||this.physicsFrozen)return;this.runtimeDiagnostics={...this.runtimeDiagnostics,transport:message.transport,...message.metrics};this.acceptCoordinateResult(message)};
+      const adapter=this.app.vault.adapter;if(!(adapter instanceof FileSystemAdapter)){this.physicsFrozen=true;if(this.startupPhase==="settling")this.degradeStartup("worker-error");new Notice("Beautiful Graph 2.0 requires the desktop filesystem adapter.");return}
+      let worker:PhysicsWorker;try{worker=createPhysicsWorker(adapter.getFullPath(`${directory}/${GRAPH_WORKER_ASSET}`),adapter.getFullPath(`${directory}/${GRAPH_WASM_ASSET}`))}catch(error){this.physicsFrozen=true;if(this.startupPhase==="settling")this.degradeStartup("worker-error");new Notice(`Beautiful Graph installation error: ${GRAPH_WORKER_ASSET} could not be started.`);this.plugin.logDiagnostic("worker-create-failure",{error:String(error)});return}this.worker=worker;this.startupMetrics.workerGenerations++;
+      worker.onmessage=event=>{const message=event.data;if(message.version!==WORKER_PROTOCOL_VERSION)return;if(message.type==="failure"){this.failPhysicsWorker(worker,message.message);return}if(message.type==="ready"){this.runtimeDiagnostics.engine=message.engine;this.plugin.logDiagnostic(message.engine==="javascript"?"physics-engine-fallback":"physics-engine-selected",{engine:message.engine,revision:message.revision});return}if(message.revision!==this.workerGeneration||this.physicsFrozen)return;this.runtimeDiagnostics={...this.runtimeDiagnostics,transport:message.transport,...message.metrics};this.acceptCoordinateResult(message)};
       worker.onerror=event=>this.failPhysicsWorker(worker,`Physics worker failed: ${event.message||`missing ${GRAPH_WORKER_ASSET}`}`);worker.onmessageerror=()=>this.failPhysicsWorker(worker,"Physics worker returned an unreadable message.");
     }
     this.workerCollisionRadii=new Map(nodes.map(node=>[node.id,node.radius]));
@@ -278,7 +279,7 @@ export class BeautifulGraphView extends ItemView {
     this.worker.postMessage(message);
   }
 
-  updateForces(): void { this.physicsFrozen=false;if(!this.worker){this.startActiveWorker(true,{heat:1});return}this.worker.postMessage({type:"forces",version:WORKER_PROTOCOL_VERSION,forces:this.plugin.settings.forces,heat:AUTOMATIC_WAKE_ALPHA}); }
+  updateForces(): void {if(this.physicsFrozen&&!this.worker)return;this.physicsFrozen=false;if(!this.worker){this.startActiveWorker(true,{heat:1});return}this.worker.postMessage({type:"forces",version:WORKER_PROTOCOL_VERSION,forces:this.plugin.settings.forces,heat:AUTOMATIC_WAKE_ALPHA}); }
 
   private buildScene(): void {
     this.prepareScene();

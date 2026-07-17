@@ -41,7 +41,7 @@ export async function createWasmSimulationEngine(source:WasmSource):Promise<Wasm
   return new WasmSimulationEngine(wasm);
 }
 
-export async function createPreferredSimulationEngine(wasmUrl:URL):Promise<SimulationEngine>{try{return await createWasmSimulationEngine(wasmUrl)}catch{return new (await import("./javascript-simulation-engine.ts")).JavaScriptSimulationEngine()}}
+export async function createPreferredSimulationEngine(source:WasmSource):Promise<SimulationEngine>{try{return await createWasmSimulationEngine(source)}catch{return new (await import("./javascript-simulation-engine.ts")).JavaScriptSimulationEngine()}}
 function requiredFinite(value:unknown):number{if(typeof value!=="number"||!Number.isFinite(value))throw new Error("Simulation node values must be finite.");return value}
 function optionalFinite(value:unknown):number{return value===undefined?0:requiredFinite(value)}
 function finiteOrNull(value:unknown):number|null{return typeof value==="number"&&Number.isFinite(value)?value:null}

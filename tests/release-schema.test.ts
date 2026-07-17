@@ -41,10 +41,13 @@ test("production source has no dormant V1 force or Tune paths",()=>{
 });
 
 test("worker assets resolve from the installed plugin directory and diagnostics expose engine selection",()=>{
-  const view=text("../src/graph-view.ts"),worker=text("../src/graph-worker.ts");
+  const view=text("../src/graph-view.ts"),worker=text("../src/graph-worker.ts"),factory=text("../src/physics-worker.ts"),build=text("../esbuild.config.mjs");
   assert.match(view,/manifest\.dir/);
-  assert.match(view,/getResourcePath\(`\$\{directory\}\/\$\{GRAPH_WORKER_ASSET\}`\)/);
+  assert.match(view,/adapter\.getFullPath\(`\$\{directory\}\/\$\{GRAPH_WORKER_ASSET\}`\)/);
+  assert.match(view,/adapter instanceof FileSystemAdapter/);
+  assert.match(factory,/node:worker_threads/);
+  assert.match(build,/platform:"node",format:"cjs"/);
   assert.match(view,/physics-engine-fallback/);
   assert.match(view,/physics-engine-selected/);
-  assert.match(worker,/new URL\("graph-sim\.wasm",self\.location\.href\)/);
+  assert.match(worker,/readFile\(data\.wasmPath/);
 });

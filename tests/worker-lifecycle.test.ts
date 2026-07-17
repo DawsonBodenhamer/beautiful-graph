@@ -19,7 +19,7 @@ function init(worker:ReturnType<typeof harness>,revision=1){worker.runtime.onMes
 
 test("named worker factory never creates a Blob compatibility worker",()=>{
   const source=readFileSync(new URL("../src/physics-worker.ts",import.meta.url),"utf8");
-  assert.match(source,/new Worker\(assetUrl,\{name:"beautiful-graph-physics"\}\)/);
+  assert.match(source,/new ThreadWorker\(workerPath,\{name:"beautiful-graph-physics",workerData:\{wasmPath\}\}\)/);
   assert.doesNotMatch(source,/Blob|createObjectURL|createPhysicsWorkerSource/);
 });
 
