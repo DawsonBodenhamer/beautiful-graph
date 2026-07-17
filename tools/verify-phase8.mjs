@@ -46,7 +46,8 @@ for(const result of rapid.results??[]){
 }
 if((rapid.results??[]).length!==3)fail("Rapid-drag report must contain three runs.");
 const manual=data["manual-open.json"];
-if((manual.runs??[]).length!==3||manual.runs.some(run=>!run.passed))fail("One or more clean-open startup runs failed.");
+if(manual.protocol?.startupLongTaskPolicy!=="record-only-user-approved")fail("Clean-open startup report is missing the approved record-only long-task policy.");
+if((manual.runs??[]).length!==3||manual.runs.some(run=>!run.lifecyclePassed||!run.passed))fail("One or more clean-open startup lifecycle runs failed.");
 const live=data["live-baseline.json"];
 if(live.timedOut!==0)fail("Live topology-event audit contains a timeout.");
 const workerHeap=(live.runtimeSamples??[]).map(sample=>sample.heapBytes).filter(Number.isFinite);

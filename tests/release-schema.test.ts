@@ -35,6 +35,9 @@ test("Phase 8 verification fails closed on runtime evidence and installed hashes
   assert.match(harness,/getRuntimeDiagnostics/);
   assert.match(harness,/function obsidianVersion\(\)/);
   assert.match(harness,/initialOccupancyRange:\[\.84,\.9\]/);
+  assert.match(harness,/startupLongTaskPolicy:"record-only-user-approved"/);
+  assert.match(harness,/strictPassed=lifecyclePassed&&longTasks\.every/);
+  assert.match(verify,/approved record-only long-task policy/);
   assert.match(harness,/progressivePaint=metrics\.finalNodeCount===startupNodes\.length/);
   assert.match(harness,/\["physicsWake","camera","gui"\]/);
   assert.doesNotMatch(harness,/finalOccupancy>=\.84/);
