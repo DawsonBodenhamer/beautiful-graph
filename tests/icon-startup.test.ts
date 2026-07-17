@@ -17,6 +17,10 @@ test("icon shadow scales proportionally without zoom-resolution jumps",()=>{
   assert.equal(large.fontSize,small.fontSize*2);
   assert.equal(large.shadowBlur,small.shadowBlur*2);
   assert.equal(large.shadowDistance,small.shadowDistance*2);
-  assert.match(source,/alpha:\.98/);
+  assert.ok(Math.abs(small.shadowBlur-small.fontSize*.12)<Number.EPSILON);
+  assert.ok(Math.abs(small.shadowDistance-small.fontSize*.06)<Number.EPSILON);
+  assert.equal(small.padding,Math.ceil(small.shadowBlur*2+small.shadowDistance));
+  assert.match(source,/padding:metrics\.padding/);
+  assert.match(source,/alpha:\.5/);
   assert.doesNotMatch(source,/icon\.resolution\s*=|this\.scale>2\.5\?8/);
 });
