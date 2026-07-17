@@ -36,7 +36,9 @@ test("Phase 8 verification fails closed on runtime evidence and installed hashes
   assert.match(harness,/function obsidianVersion\(\)/);
   assert.match(harness,/initialOccupancyRange:\[\.84,\.9\]/);
   assert.match(harness,/progressivePaint=metrics\.finalNodeCount===startupNodes\.length/);
+  assert.match(harness,/\["physicsWake","camera","gui"\]/);
   assert.doesNotMatch(harness,/finalOccupancy>=\.84/);
+  assert.match(verify,/Rapid-drag run .* exceeded the 50 ms main-thread task limit/);
 });
 
 test("production source has no dormant V1 force or Tune paths",()=>{

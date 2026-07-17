@@ -167,8 +167,8 @@
   }
 
   const workloads = {
-    async startup(view) {
-      view.rebuild(false);
+    async physicsWake(view) {
+      view.startActiveWorker(true);
       await sleep(RUN_MS);
     },
     async camera(view, duration) {
@@ -221,7 +221,7 @@
       await sleep(WARMUP_MS);
       const capturedFixture = fixture(plugin, view);
       await adapter.write(`${OUTPUT_ROOT}/topology.json`, `${JSON.stringify(capturedFixture, null, 2)}\n`);
-      for (const [name, drive] of Object.entries(workloads)) results.push(...await sampleWorkload(view, name, drive));
+      for (const name of ["physicsWake","camera","gui"]) results.push(...await sampleWorkload(view, name, workloads[name]));
     } finally {
       Object.assign(host.style, previous);
     }

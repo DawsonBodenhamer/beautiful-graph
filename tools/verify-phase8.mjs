@@ -40,7 +40,10 @@ for(const result of baseline.results){
   if(result.workerTickSamples>0&&result.workerTickP95Ms>16.667)fail(`${result.workload} run ${result.run} exceeded the 16.667 ms worker-tick p95 budget.`);
 }
 const rapid=data["rapid-drag.json"];
-for(const result of rapid.results??[])if(result.pointerToPaintP95Ms>=33)fail(`Rapid-drag run ${result.run} exceeded the 33 ms input-to-paint p95 limit.`);
+for(const result of rapid.results??[]){
+  if(result.longTaskMaxMs>50)fail(`Rapid-drag run ${result.run} exceeded the 50 ms main-thread task limit.`);
+  if(result.pointerToPaintP95Ms>=33)fail(`Rapid-drag run ${result.run} exceeded the 33 ms input-to-paint p95 limit.`);
+}
 if((rapid.results??[]).length!==3)fail("Rapid-drag report must contain three runs.");
 const manual=data["manual-open.json"];
 if((manual.runs??[]).length!==3||manual.runs.some(run=>!run.passed))fail("One or more clean-open startup runs failed.");
