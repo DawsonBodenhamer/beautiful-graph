@@ -179,11 +179,11 @@ export class BeautifulGraphView extends ItemView {
 
   async onOpen(): Promise<void> {
     this.closed=false;this.setStartupPhase("waiting");this.startupMetrics={phase:"waiting",openedAt:performance.now(),firstNodeCount:0,firstEdgeCount:0,firstGroupLabelCount:0,firstPaintReady:false,finalNodeCount:0,workerGenerations:0,topologyRebuilds:0};this.startupLastFrame=undefined;this.startupFirstBatchRecorded=false;
+    await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));if(this.closed)return;
     this.contentEl.empty();
     this.contentEl.addClass("beautiful-graph-view");
     const canvasHost = this.contentEl.createDiv({ cls: "beautiful-graph-canvas" });this.canvasHost=canvasHost;canvasHost.tabIndex=0;this.loadingEl=this.contentEl.createDiv({cls:"beautiful-graph-loading",text:"Building graph…"});
     canvasHost.addClass("is-preparing");
-    await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));if(this.closed)return;
     this.pixi = new Application();
     await this.pixi.init({ resizeTo: canvasHost, antialias: true, backgroundAlpha: 0, preference: "webgl",autoStart:false,sharedTicker:false });
     if(this.closed)return;await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));if(this.closed)return;
