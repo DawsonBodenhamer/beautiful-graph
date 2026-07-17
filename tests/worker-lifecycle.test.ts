@@ -8,9 +8,9 @@ const forces={center:1,repel:1,link:.04,distance:50,curvature:0,siblingLinkForce
 const nodes=[{id:"a",preserve:false,x:0,y:0,degree:1,radius:4},{id:"b",preserve:false,x:100,y:0,degree:1,radius:4}];
 const edges=[{source:"a",target:"b",forward:true,reverse:false,relationship:"cross" as const}];
 
-function harness(){
+function harness(shared=false){
   const messages:GraphWorkerResponse[]=[],timers=new Map<number,{callback:()=>void;delay:number}>();let nextId=0;
-  const runtime=createGraphWorkerRuntime({post:message=>messages.push(message),setTimer:(callback,delay)=>{const id=++nextId;timers.set(id,{callback,delay});return id},clearTimer:id=>timers.delete(id as number)});
+  const runtime=createGraphWorkerRuntime({post:message=>messages.push(message),setTimer:(callback,delay)=>{const id=++nextId;timers.set(id,{callback,delay});return id},clearTimer:id=>timers.delete(id as number),supportsSharedMemory:()=>shared});
   const runNext=()=>{const entry=timers.entries().next().value as [number,{callback:()=>void;delay:number}]|undefined;if(!entry)return false;timers.delete(entry[0]);entry[1].callback();return true};
   return{runtime,messages,timers,runNext};
 }
@@ -47,7 +47,7 @@ test("topology reconciliation preserves surviving state and uses one persistent 
   const worker=harness();init(worker);worker.runNext();const before=worker.messages.at(-1);assert.equal(before?.type,"coordinates");
   worker.runtime.onMessage({type:"topology",version:WORKER_PROTOCOL_VERSION,revision:2,nodes:[{id:"a",preserve:true,degree:1,radius:4},{id:"c",preserve:false,x:20,y:30,degree:0,radius:4}],edges:[],heat:AUTOMATIC_WAKE_ALPHA});
   assert.deepEqual(worker.runtime.inspect().nodeIds,["a","c"]);assert.equal(worker.runtime.inspect().revision,2);assert.equal(worker.timers.size,1);
-  worker.runNext();const after=worker.messages.at(-1);assert.equal(after?.type,"coordinates");if(after?.type==="coordinates")assert.notEqual(after.coords[0],999);
+  worker.runNext();const after=worker.messages.at(-1);assert.equal(after?.type,"coordinates");if(after?.type==="coordinates"&&after.transport==="transfer")assert.notEqual(after.coords[0],999);
 });
 
 test("drag owns the audited alpha target until release",()=>{

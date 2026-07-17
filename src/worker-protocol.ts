@@ -1,6 +1,6 @@
 import type {GraphEdge,GraphForces} from "./types.ts";
 
-export const WORKER_PROTOCOL_VERSION=1 as const;
+export const WORKER_PROTOCOL_VERSION=2 as const;
 export const ALPHA_INITIAL=1;
 export const ALPHA_TARGET_REST=0;
 export const ALPHA_MIN=.001;
@@ -20,8 +20,12 @@ export type WorkerDragEndMessage={type:"dragEnd";version:typeof WORKER_PROTOCOL_
 export type WorkerDisposeMessage={type:"dispose";version:typeof WORKER_PROTOCOL_VERSION};
 export type GraphWorkerRequest=WorkerInitMessage|WorkerTopologyMessage|WorkerForcesMessage|WorkerWeightMessage|WorkerDragMessage|WorkerDragEndMessage|WorkerDisposeMessage;
 
-export type WorkerCoordinatesMessage={type:"coordinates";version:typeof WORKER_PROTOCOL_VERSION;revision:number;ids:string[];coords:Float32Array;alpha:number};
-export type WorkerSleepMessage={type:"sleep";version:typeof WORKER_PROTOCOL_VERSION;revision:number;ids:string[];coords:Float32Array;alpha:number};
+export type WorkerCoordinateKind="coordinates"|"sleep";
+export type WorkerSharedCoordinatesMessage<Kind extends WorkerCoordinateKind=WorkerCoordinateKind>={type:Kind;version:typeof WORKER_PROTOCOL_VERSION;revision:number;transport:"shared";publication:number;count:number;ids?:string[];buffer?:SharedArrayBuffer;alpha:number};
+export type WorkerTransferCoordinatesMessage<Kind extends WorkerCoordinateKind=WorkerCoordinateKind>={type:Kind;version:typeof WORKER_PROTOCOL_VERSION;revision:number;transport:"transfer";ids:string[];coords:Float32Array;alpha:number};
+export type WorkerCoordinateMessage=WorkerSharedCoordinatesMessage|WorkerTransferCoordinatesMessage;
+export type WorkerCoordinatesMessage=WorkerSharedCoordinatesMessage<"coordinates">|WorkerTransferCoordinatesMessage<"coordinates">;
+export type WorkerSleepMessage=WorkerSharedCoordinatesMessage<"sleep">|WorkerTransferCoordinatesMessage<"sleep">;
 export type WorkerReadyMessage={type:"ready";version:typeof WORKER_PROTOCOL_VERSION;revision:number;engine:"wasm"|"javascript"};
 export type WorkerFailureMessage={type:"failure";version:typeof WORKER_PROTOCOL_VERSION;message:string};
 export type GraphWorkerResponse=WorkerCoordinatesMessage|WorkerSleepMessage|WorkerReadyMessage|WorkerFailureMessage;

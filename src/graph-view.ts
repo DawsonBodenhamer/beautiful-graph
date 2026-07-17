@@ -2,7 +2,8 @@ import { ItemView, Menu, Notice, setIcon, TFile, TFolder, WorkspaceLeaf } from "
 import { Application, BlurFilter, Container, Graphics, Sprite, Text, TextStyle, Texture } from "pixi.js";
 import { buildGraphModel } from "./graph-model";
 import { createPhysicsWorker, GRAPH_WORKER_ASSET } from "./physics-worker";
-import { AUTOMATIC_WAKE_ALPHA, WORKER_PROTOCOL_VERSION, type GraphWorkerResponse } from "./worker-protocol";
+import { AUTOMATIC_WAKE_ALPHA, WORKER_PROTOCOL_VERSION, type GraphWorkerResponse, type WorkerCoordinateMessage } from "./worker-protocol";
+import {LatestCoordinateResult,readSharedCoordinates} from "./coordinate-transport";
 import type BeautifulGraphPlugin from "./main";
 import type { BeautifulGraphSettings, GraphModel, GraphNode } from "./types";
 import { DEFAULT_DISPLAY, DEFAULT_FORCES } from "./defaults";
@@ -114,8 +115,11 @@ export class BeautifulGraphView extends ItemView {
   private focusBlur = new BlurFilter({ strength: 0, quality: 1 });
   private minRadius = 1;
   private maxRadius = 1;
-  private physicsTargets = new Map<string,{x:number;y:number}>();
-  private motionUntil = 0;
+  private coordinateResults=new LatestCoordinateResult<WorkerCoordinateMessage>();
+  private sharedCoordinateBuffer?:SharedArrayBuffer;
+  private sharedCoordinateIds:string[]=[];
+  private sharedCoordinateRevision=-1;
+  private sharedCoordinateScratch=new Float32Array();
   private lastBendUpdate = 0;
   private lastGeometryRender = 0;
   private modelRefreshTimer?: number;
@@ -157,7 +161,6 @@ export class BeautifulGraphView extends ItemView {
   private pendingLabels=new Set<string>();
   private labelCreationFrame=0;
   private pendingFocusAdditive=false;
-  private physicsFinalizeTimer?:number;
   private startupLastFrame?:number;
 
   constructor(leaf: WorkspaceLeaf, private plugin: BeautifulGraphPlugin) { super(leaf); }
@@ -201,7 +204,7 @@ export class BeautifulGraphView extends ItemView {
     this.cancelStartupAdmission=admitStartup(this.app.workspace.layoutReady,ready=>this.app.workspace.onLayoutReady(ready),metadataReady,ready=>{this.registerEvent(this.app.metadataCache.on("resolved",ready))},()=>{if(!this.closed&&this.startupPhase==="waiting")void this.beginStartup()});
   }
 
-  async onClose(): Promise<void> { this.closed=true;this.cancelStartupAdmission?.();this.setStartupPhase("cancelled");this.workerGeneration++;this.plugin.unregisterGraph(this);this.panelResizeObserver?.disconnect();if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);if(this.nodeScaleFrame)cancelAnimationFrame(this.nodeScaleFrame);if(this.labelCreationFrame)cancelAnimationFrame(this.labelCreationFrame);if(this.modelRefreshTimer)window.clearTimeout(this.modelRefreshTimer);if(this.searchTimer)window.clearTimeout(this.searchTimer);for(const timer of this.folderTapTimers.values())window.clearTimeout(timer);this.cancelHoverIntent();this.worker?.postMessage({type:"dispose",version:WORKER_PROTOCOL_VERSION});this.worker?.terminate(); this.pixi?.destroy(true);for(const texture of this.nodeTextures.values())texture.destroy(true);this.nodeTextures.clear(); }
+  async onClose(): Promise<void> { this.closed=true;this.cancelStartupAdmission?.();this.setStartupPhase("cancelled");this.workerGeneration++;this.plugin.unregisterGraph(this);this.panelResizeObserver?.disconnect();if(this.nodeScaleFrame)cancelAnimationFrame(this.nodeScaleFrame);if(this.labelCreationFrame)cancelAnimationFrame(this.labelCreationFrame);if(this.modelRefreshTimer)window.clearTimeout(this.modelRefreshTimer);if(this.searchTimer)window.clearTimeout(this.searchTimer);for(const timer of this.folderTapTimers.values())window.clearTimeout(timer);this.cancelHoverIntent();this.worker?.postMessage({type:"dispose",version:WORKER_PROTOCOL_VERSION});this.worker?.terminate(); this.pixi?.destroy(true);for(const texture of this.nodeTextures.values())texture.destroy(true);this.nodeTextures.clear(); }
 
   private setStartupPhase(phase:StartupPhase):void{this.startupPhase=phase;this.startupMetrics.phase=phase}
   private installModelListeners():void{
@@ -231,7 +234,7 @@ export class BeautifulGraphView extends ItemView {
   rebuild(rebuildModel = true, fitInitial = true,initialOpen=false): void {
     this.cancelHoverIntent();this.focusAnimation++;this.focusProgress=0;this.focusTarget=0;this.focusPinned=false;this.selectedFocusIds.clear();this.hovered=undefined;this.hideTooltip();this.scene.filters=[];
     this.physicsTicks = 0;
-    this.physicsTargets.clear();
+    this.coordinateResults.clear();
     this.labelLayoutTargets.clear();
     if (rebuildModel) this.model = buildGraphModel(this.app, this.plugin.settings);
     this.applyScopeFlags();
@@ -240,35 +243,28 @@ export class BeautifulGraphView extends ItemView {
     this.renderGraph();
   }
 
-  private applyPhysicsTargets():void {for(const node of this.model.nodes){const target=this.physicsTargets.get(node.id);if(target){node.x=target.x;node.y=target.y}}this.physicsTargets.clear();this.motionUntil=0}
-  private presentationTargetDelta():number {let maximum=0;for(const node of this.model.nodes){const target=this.physicsTargets.get(node.id);if(target)maximum=Math.max(maximum,Math.hypot(target.x-node.x,target.y-node.y))}return maximum}
-  private finishPresentationTargets(generation:number,done:()=>void):void {
-    if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);const deadline=performance.now()+150;
-    const poll=()=>{this.physicsFinalizeTimer=undefined;if(generation!==this.workerGeneration)return;const screenDelta=this.presentationTargetDelta()*Math.max(.08,this.scale),cameraStable=!this.startupCameraTracking||this.startupCameraResidual()<=.2;if((screenDelta<=.15||!this.physicsTargets.size)&&cameraStable||performance.now()>=deadline){this.applyPhysicsTargets();done();return}this.motionUntil=performance.now()+80;this.queueRender();this.physicsFinalizeTimer=window.setTimeout(poll,16)};
-    this.motionUntil=deadline;this.physicsFinalizeTimer=window.setTimeout(poll,16);
-  }
   private failPhysicsWorker(worker:Worker,reason:string):void {
     if(this.worker!==worker)return;
-    worker.terminate();this.worker=undefined;if(this.physicsFinalizeTimer)window.clearTimeout(this.physicsFinalizeTimer);this.physicsFinalizeTimer=undefined;this.workerNodeIds.clear();this.physicsTargets.clear();this.motionUntil=0;
+    worker.terminate();this.worker=undefined;this.workerNodeIds.clear();this.coordinateResults.clear();
     if(this.startupPhase==="building"||this.startupPhase==="prepared"||this.startupPhase==="settling"){this.degradeStartup("worker-error");return}
     this.renderGraph();new Notice(`${reason} The last valid layout was preserved.`);
   }
   private finishInitialLayout(generation:number,metrics:Record<string,number>):void {
-    if(this.startupPhase!=="settling")return;this.finishPresentationTargets(generation,()=>{if(generation!==this.workerGeneration||this.startupPhase!=="settling")return;this.completeStartup(metrics)});
+    if(generation!==this.workerGeneration||this.startupPhase!=="settling")return;this.completeStartup(metrics);
   }
 
   private recordTerminalMetrics(reason:"converged"|"worker-error",metrics:Record<string,number>={}):void{this.startupMetrics.convergenceReason=reason;this.startupMetrics.residuals={p95Displacement:metrics.p95Displacement??0,familyDrift:metrics.familyDrift??0,overlap:metrics.overlap??0,substeps:metrics.substeps??0,probes:metrics.probes??0,elapsed:metrics.elapsed??0};this.startupMetrics.cameraScaleDrift=this.startupMetrics.initialCameraScale?Math.abs(this.scale/this.startupMetrics.initialCameraScale-1):0}
   private completeStartup(metrics:Record<string,number>):void{const now=performance.now();this.recordTerminalMetrics("converged",metrics);this.setStartupPhase("complete");this.startupMetrics.presentationStableAt=now;this.startupMetrics.cameraStableAt=now;this.startupMetrics.finalCameraResidual=this.startupCameraResidual();this.plugin.markLayoutCurrent();this.renderGraph();if(this.pendingModelRefresh){this.pendingModelRefresh=false;this.scheduleModelRefresh()}}
-  private degradeStartup(reason:"worker-error",metrics:Record<string,number>={}):void{const now=performance.now();this.recordTerminalMetrics(reason,metrics);this.setStartupPhase("degraded");this.startupMetrics.presentationStableAt=now;this.startupMetrics.cameraStableAt=now;this.startupMetrics.finalCameraResidual=this.startupCameraResidual();this.applyPhysicsTargets();this.renderGraph();new Notice("Graph startup degraded after a physics worker error. The last cooled stored positions were preserved.");if(this.pendingModelRefresh){this.pendingModelRefresh=false;this.scheduleModelRefresh()}}
+  private degradeStartup(reason:"worker-error",metrics:Record<string,number>={}):void{const now=performance.now();this.recordTerminalMetrics(reason,metrics);this.setStartupPhase("degraded");this.startupMetrics.presentationStableAt=now;this.startupMetrics.cameraStableAt=now;this.startupMetrics.finalCameraResidual=this.startupCameraResidual();this.renderGraph();new Notice("Graph startup degraded after a physics worker error. The last cooled stored positions were preserved.");if(this.pendingModelRefresh){this.pendingModelRefresh=false;this.scheduleModelRefresh()}}
 
   private startActiveWorker(force=false,initial:{heat?:number;startup?:boolean}={}):void {
     this.physicsFrozen=false;
     const active=this.model.nodes.filter(node=>node.visible),ids=activeNodeIds(this.model.nodes);if(!force&&this.worker&&sameNodeIds(ids,this.workerNodeIds))return;
-    const hadWorker=!!this.worker,survivingIds=new Set([...this.workerNodeIds].filter(id=>ids.has(id))),topology=prepareWorkerTopology(active,this.model.edges,survivingIds,hadWorker?{}:this.plugin.data.positions,Math.random,this.plugin.settings.display.nodeSize),{nodes,edges}=topology;this.workerNodeIds=ids;const revision=++this.workerGeneration;
+    const hadWorker=!!this.worker,survivingIds=new Set([...this.workerNodeIds].filter(id=>ids.has(id))),topology=prepareWorkerTopology(active,this.model.edges,survivingIds,hadWorker?{}:this.plugin.data.positions,Math.random,this.plugin.settings.display.nodeSize),{nodes,edges}=topology;this.workerNodeIds=ids;const revision=++this.workerGeneration;this.coordinateResults.clear();
     if(!this.worker){
       const directory=this.plugin.manifest.dir;if(!directory){this.physicsFrozen=true;if(this.startupPhase==="settling")this.degradeStartup("worker-error");new Notice(`Beautiful Graph installation error: ${GRAPH_WORKER_ASSET} cannot be located.`);return}
       let worker:Worker;try{worker=createPhysicsWorker(this.app.vault.adapter.getResourcePath(`${directory}/${GRAPH_WORKER_ASSET}`))}catch(error){this.physicsFrozen=true;if(this.startupPhase==="settling")this.degradeStartup("worker-error");new Notice(`Beautiful Graph installation error: ${GRAPH_WORKER_ASSET} could not be started.`);this.plugin.logDiagnostic("worker-create-failure",{error:String(error)});return}this.worker=worker;this.startupMetrics.workerGenerations++;
-      worker.onmessage=(event:MessageEvent<GraphWorkerResponse>)=>{const message=event.data;if(message.version!==WORKER_PROTOCOL_VERSION)return;if(message.type==="failure"){this.failPhysicsWorker(worker,message.message);return}if(message.type==="ready"){this.plugin.logDiagnostic("physics-engine-selected",{engine:message.engine,revision:message.revision});return}if(message.revision!==this.workerGeneration||this.physicsFrozen)return;const coords=message.coords;for(let index=0;index<message.ids.length;index++){const id=message.ids[index],x=coords[index*2],y=coords[index*2+1];if(id===undefined||x===undefined||y===undefined||!Number.isFinite(x)||!Number.isFinite(y)||Math.abs(x)>500000||Math.abs(y)>500000){if(id!==undefined)this.physicsTargets.delete(id);continue}this.physicsTargets.set(id,{x,y})}this.motionUntil=performance.now()+180;if(this.activeLenses.size)this.lensGeometryDirty=true;if(message.type==="coordinates")this.physicsTicks++;if(message.type==="sleep"){this.lastLabelLayout=0;this.plugin.markLayoutCurrent();this.saveCooledPositions(message.ids,message.coords);if(this.startupPhase==="settling"){this.startupMetrics.workerTerminalAt=performance.now();this.queueRender();this.finishInitialLayout(message.revision,{elapsed:0,substeps:this.physicsTicks,probes:0,p95Displacement:0,familyDrift:0,overlap:0});return}}this.queueRender()};
+      worker.onmessage=(event:MessageEvent<GraphWorkerResponse>)=>{const message=event.data;if(message.version!==WORKER_PROTOCOL_VERSION)return;if(message.type==="failure"){this.failPhysicsWorker(worker,message.message);return}if(message.type==="ready"){this.plugin.logDiagnostic("physics-engine-selected",{engine:message.engine,revision:message.revision});return}if(message.revision!==this.workerGeneration||this.physicsFrozen)return;this.acceptCoordinateResult(message)};
       worker.onerror=event=>this.failPhysicsWorker(worker,`Physics worker failed: ${event.message||`missing ${GRAPH_WORKER_ASSET}`}`);worker.onmessageerror=()=>this.failPhysicsWorker(worker,"Physics worker returned an unreadable message.");
     }
     const message={type:hadWorker?"topology":"init",version:WORKER_PROTOCOL_VERSION,revision,nodes,edges,forces:this.plugin.settings.forces,heat:initial.heat??(initial.startup?1:AUTOMATIC_WAKE_ALPHA)} as const;
@@ -338,7 +334,16 @@ export class BeautifulGraphView extends ItemView {
   private queueRender(): void {
     this.renderQueued=true;
   }
-  private animatePresentation(deltaMS:number):void {const now=performance.now(),frameGap=this.startupLastFrame===undefined?0:now-this.startupLastFrame;if(this.startupPhase==="settling"){this.startupMetrics.maxFrameGap=Math.max(this.startupMetrics.maxFrameGap??0,frameGap);this.startupLastFrame=now}let moving=now<this.motionUntil,maxDelta=0;const paintedSteps:number[]=[];if(moving){const blend=1-Math.exp(-Math.min(33,deltaMS)/24),gapCap=frameGap>100?2/Math.max(.08,this.scale):Infinity;for(const node of this.model.nodes){if(node===this.dragged)continue;const target=this.physicsTargets.get(node.id);if(!target)continue;const dx=target.x-node.x,dy=target.y-node.y,distance=Math.hypot(dx,dy),step=Math.min(distance*blend,gapCap),factor=distance>0?step/distance:0;maxDelta=Math.max(maxDelta,Math.abs(dx),Math.abs(dy));node.x+=dx*factor;node.y+=dy*factor;if(frameGap>100)paintedSteps.push(step*this.scale)}moving=maxDelta>.02}if(paintedSteps.length){paintedSteps.sort((a,b)=>a-b);const p95=paintedSteps[Math.max(0,Math.ceil(paintedSteps.length*.95)-1)]??0;this.startupMetrics.postGapP95Jump=Math.max(this.startupMetrics.postGapP95Jump??0,p95)}const tracking=this.startupPhase==="settling"&&this.startupCameraTracking;if(tracking)this.trackStartupCamera(deltaMS);if((this.renderQueued||moving||tracking)&&now-this.lastGeometryRender>=15){this.renderQueued=false;this.lastGeometryRender=now;this.renderGraph()}}
+  private acceptCoordinateResult(message:WorkerCoordinateMessage):void{if(message.transport==="shared"){if(message.buffer)this.sharedCoordinateBuffer=message.buffer;if(message.ids){this.sharedCoordinateIds=message.ids;this.sharedCoordinateRevision=message.revision}}this.coordinateResults.push(message);this.queueRender()}
+  private consumeCoordinateResult():boolean{
+    const message=this.coordinateResults.take();if(!message||message.revision!==this.workerGeneration||this.physicsFrozen)return false;
+    let ids:string[],coords:Float32Array;
+    if(message.transport==="transfer"){ids=message.ids;coords=message.coords}
+    else{if(!this.sharedCoordinateBuffer||this.sharedCoordinateRevision!==message.revision||this.sharedCoordinateIds.length!==message.count)return false;if(this.sharedCoordinateScratch.length!==message.count*2)this.sharedCoordinateScratch=new Float32Array(message.count*2);if(!readSharedCoordinates({buffer:this.sharedCoordinateBuffer,publication:message.publication,count:message.count},this.sharedCoordinateScratch))return false;ids=this.sharedCoordinateIds;coords=this.sharedCoordinateScratch}
+    for(let index=0;index<ids.length;index++){const id=ids[index],x=coords[index*2],y=coords[index*2+1],node=id===undefined?undefined:this.views.get(id)?.node;if(!node||node===this.dragged||x===undefined||y===undefined||!Number.isFinite(x)||!Number.isFinite(y)||Math.abs(x)>500000||Math.abs(y)>500000)continue;node.x=x;node.y=y}
+    this.labelLayoutDirty=true;if(this.activeLenses.size)this.lensGeometryDirty=true;if(message.type==="coordinates")this.physicsTicks++;if(message.type==="sleep"){this.lastLabelLayout=0;this.plugin.markLayoutCurrent();this.saveCooledPositions(ids,coords);if(this.startupPhase==="settling"){this.startupMetrics.workerTerminalAt=performance.now();this.finishInitialLayout(message.revision,{elapsed:0,substeps:this.physicsTicks,probes:0,p95Displacement:0,familyDrift:0,overlap:0})}}return true;
+  }
+  private animatePresentation(deltaMS:number):void {const now=performance.now(),frameGap=this.startupLastFrame===undefined?0:now-this.startupLastFrame;if(this.startupPhase==="settling"){this.startupMetrics.maxFrameGap=Math.max(this.startupMetrics.maxFrameGap??0,frameGap);this.startupLastFrame=now}const coordinatesApplied=this.consumeCoordinateResult(),tracking=this.startupPhase==="settling"&&this.startupCameraTracking;if(tracking)this.trackStartupCamera(deltaMS);if((this.renderQueued||coordinatesApplied||tracking)&&now-this.lastGeometryRender>=15){this.renderQueued=false;this.lastGeometryRender=now;this.renderGraph()}}
 
   private renderGraph(): void {
     this.world.position.set(this.offset.x, this.offset.y); this.world.scale.set(this.scale);
@@ -347,7 +352,7 @@ export class BeautifulGraphView extends ItemView {
     this.focusBlur.strength=this.focusProgress*1.4;this.scene.filters=this.focusProgress>.01?[this.focusBlur]:[];if(this.pixi)this.scene.filterArea=this.pixi.screen;
     const visible = new Map(this.model.nodes.filter((n) => (this.visibility.get(n.id)??0)>.01).map((n) => [n.id, n]));
     const curvature=this.plugin.settings.forces.curvature,curvatureMagnitude=Math.abs(curvature),now=performance.now(),refreshBends=curvatureMagnitude>0&&now-this.lastBendUpdate>250,obstacleGrid=refreshBends?this.makeObstacleGrid():undefined;if(refreshBends)this.lastBendUpdate=now;
-    if(this.lensGeometryDirty&&!this.zoomAnimating&&now-this.lastTerritoryUpdate>(now<this.motionUntil?280:80)){this.lastTerritoryUpdate=now;this.lensGeometryDirty=false;this.updateFolderLens()}
+    if(this.lensGeometryDirty&&!this.zoomAnimating&&now-this.lastTerritoryUpdate>80){this.lastTerritoryUpdate=now;this.lensGeometryDirty=false;this.updateFolderLens()}
     const focusRoots=this.activeFocusRoots(),focusedNodes=this.focusedNodeIds(focusRoots),hasFocus=focusRoots.size>0,edgeBuckets=new Map<string,EdgeRenderBucket>(),focusSegments:EdgeSegment[]=[];
     for (const edge of this.model.edges) {
       const a = visible.get(edge.source), b = visible.get(edge.target); if (!a || !b) continue;const ar=this.searchRoles.get(a.id),br=this.searchRoles.get(b.id);if(ar==="hidden"||br==="hidden"||(ar==="context"&&br==="context"))continue;
@@ -397,7 +402,7 @@ export class BeautifulGraphView extends ItemView {
   }
 
   private layoutLabels(force=false):void {
-    const now=performance.now(),interval=this.zoomAnimating?72:100,recompute=force||(this.labelLayoutDirty||now<this.motionUntil||this.zoomAnimating)&&now-this.lastLabelLayout>=interval;
+    const now=performance.now(),interval=this.zoomAnimating?72:100,recompute=force||(this.labelLayoutDirty||this.zoomAnimating)&&now-this.lastLabelLayout>=interval;
     if(recompute){this.lastLabelLayout=now;this.labelLayoutDirty=false;
     const labels=[...this.views.values()].filter((v):v is NodeView&{label:Text;labelBg:Graphics}=>!!v.label&&!!v.labelBg&&v.label.visible).sort((a,b)=>Number(b.node.hub)-Number(a.node.hub)||b.node.degree-a.node.degree).map(v=>{const radius=v.node.radius*this.plugin.settings.display.nodeSize*this.scale,sx=this.offset.x+v.node.x*this.scale,sy=this.offset.y+v.node.y*this.scale,metrics=this.getLabelMetrics(v),screenScale=Math.abs(v.label.scale.x*this.scale),pillWidth=metrics.width*screenScale,pillHeight=metrics.height*screenScale,pillRadius=metrics.radius*screenScale,w=pillWidth+8,h=pillHeight+6;return{v,sx,sy,radius,w,h,pillWidth,pillHeight,pillRadius,x:sx,y:sy,homeX:sx,homeY:sy,side:-1 as 1|-1}});
     const pressure=(item:typeof labels[number],side:1|-1)=>{const y=item.sy+side*(item.radius+item.h/2+12);let score=y-item.h/2<8?8-(y-item.h/2):y+item.h/2>this.contentEl.clientHeight-8?y+item.h/2-(this.contentEl.clientHeight-8):0;for(const other of labels){if(other===item)continue;const ox=(item.w+other.w)/2+16-Math.abs(item.sx-other.sx),oy=item.h+other.radius+18-Math.abs(y-other.sy);if(ox>0&&oy>0)score+=ox*oy}return score};
@@ -557,7 +562,7 @@ export class BeautifulGraphView extends ItemView {
     row.createEl("button",{text:"Save Preset"}).onclick=()=>{const name=nameInput.value.trim();if(!name){new Notice("Enter a preset name first.");return}const key=`${kind}:${name}`,exists=Object.prototype.hasOwnProperty.call(presets,name),now=Date.now();if(exists&&(this.presetOverwriteArmed.get(key)??0)<now){this.presetOverwriteArmed.set(key,now+5000);new Notice(`Preset “${name}” exists. Click Save Preset again within 5 seconds to overwrite.`);return}this.presetOverwriteArmed.delete(key);this.pushHistory();if(kind==="forces")this.plugin.settings.forcePresets[name]=structuredClone(this.plugin.settings.forces);else this.plugin.settings.displayPresets[name]=structuredClone(this.plugin.settings.display);refresh(name);void this.plugin.persistData();new Notice(`${kind==="forces"?"Forces":"Display"} preset “${name}” ${exists?"updated":"saved"}.`);this.focusSearchSoon()};
     row.createEl("button",{text:"Delete"}).onclick=()=>{const name=nameInput.value.trim();if(!name||!Object.prototype.hasOwnProperty.call(presets,name)){new Notice("Select a saved preset first.");return}const key=`delete:${kind}:${name}`,now=Date.now();if((this.presetOverwriteArmed.get(key)??0)<now){this.presetOverwriteArmed.set(key,now+5000);new Notice(`Click Delete again within 5 seconds to remove “${name}”.`);return}this.presetOverwriteArmed.delete(key);this.pushHistory();delete presets[name];nameInput.value="";refresh();void this.plugin.persistData();new Notice(`Preset “${name}” deleted.`)};
   }
-  private moveNodeDrag(event:PointerEvent):void{const host=this.canvasHost,node=this.dragged,state=this.dragState;if(!host||!node||!state)return;const disposition=dragPointerDisposition(state.pointerId,event.pointerId,event.buttons);if(disposition==="foreign")return;this.dragButtons=event.buttons;if(disposition==="release"){this.releaseNode(event.pointerId);return}const moved=moveDrag(state,{x:event.clientX,y:event.clientY},host.getBoundingClientRect(),{scale:this.scale,x:this.offset.x,y:this.offset.y}),started=startsPhysicsDrag(state.moved,moved.state.moved);this.dragState=moved.state;if(!moved.state.moved)return;this.physicsFrozen=false;node.x=moved.position.x;node.y=moved.position.y;this.physicsTargets.delete(node.id);if(started)this.worker?.postMessage({type:"dragStart",id:node.id,x:node.x,y:node.y});this.pendingDrag={id:node.id,...moved.position};if(!this.dragFrame)this.dragFrame=requestAnimationFrame(()=>{this.dragFrame=0;if(this.pendingDrag)this.worker?.postMessage({type:"dragMove",...this.pendingDrag});this.pendingDrag=undefined});this.hovered=node;this.focusTarget=1;this.queueRender()}
+  private moveNodeDrag(event:PointerEvent):void{const host=this.canvasHost,node=this.dragged,state=this.dragState;if(!host||!node||!state)return;const disposition=dragPointerDisposition(state.pointerId,event.pointerId,event.buttons);if(disposition==="foreign")return;this.dragButtons=event.buttons;if(disposition==="release"){this.releaseNode(event.pointerId);return}const moved=moveDrag(state,{x:event.clientX,y:event.clientY},host.getBoundingClientRect(),{scale:this.scale,x:this.offset.x,y:this.offset.y}),started=startsPhysicsDrag(state.moved,moved.state.moved);this.dragState=moved.state;if(!moved.state.moved)return;this.physicsFrozen=false;node.x=moved.position.x;node.y=moved.position.y;if(started)this.worker?.postMessage({type:"dragStart",version:WORKER_PROTOCOL_VERSION,id:node.id,x:node.x,y:node.y});this.pendingDrag={id:node.id,...moved.position};if(!this.dragFrame)this.dragFrame=requestAnimationFrame(()=>{this.dragFrame=0;if(this.pendingDrag)this.worker?.postMessage({type:"dragMove",version:WORKER_PROTOCOL_VERSION,...this.pendingDrag});this.pendingDrag=undefined});this.hovered=node;this.focusTarget=1;this.queueRender()}
   private bindNavigation(host:HTMLElement):void {
     let panning=false,last={x:0,y:0};
     host.oncontextmenu=e=>{if(e.button===1)e.preventDefault()};
@@ -609,14 +614,14 @@ export class BeautifulGraphView extends ItemView {
   }
   private reconcileTopology(next:GraphModel):void{
     const reconciliation=reconcileGraphNodes(this.model.nodes,next.nodes);
-    for(const id of reconciliation.removedIds){const view=this.views.get(id);if(view)this.destroyNodeView(view);this.views.delete(id);this.visibility.delete(id);this.physicsTargets.delete(id);this.pendingLabels.delete(id)}
+    for(const id of reconciliation.removedIds){const view=this.views.get(id);if(view)this.destroyNodeView(view);this.views.delete(id);this.visibility.delete(id);this.pendingLabels.delete(id)}
     for(const node of reconciliation.nodes){const view=this.views.get(node.id);if(view){view.node=node;view.styleKey=undefined;if(view.label&&view.label.text!==node.label){view.label.text=node.label;view.labelMetrics=undefined;if(view.labelBg)this.drawLabelBackground(view.labelBg,view.label,node.color)}if(view.icon)view.icon.text=node.icon}}
     for(const node of reconciliation.added){this.visibility.set(node.id,node.visible?1:0);this.createNodeView(node)}
     this.model={nodes:reconciliation.nodes,edges:next.edges};this.minRadius=Math.min(...this.model.nodes.map(node=>node.radius));this.maxRadius=Math.max(...this.model.nodes.map(node=>node.radius));this.rebuildAdjacency();this.startActiveWorker(true);this.renderGraph();
   }
   private destroyNodeView(view:NodeView):void{for(const child of [view.glow,view.surface,view.icon,view.label,view.labelBg,view.leader])child?.destroy()}
   private beginNodeDrag(node:GraphNode,pointerId:number,clientX:number,clientY:number,additive:boolean):void {const host=this.canvasHost;if(!host)return;this.cancelHoverIntent();this.pendingFocusAdditive=additive;this.dragged=node;this.dragButtons=1;this.dragState=beginDrag(pointerId,{x:clientX,y:clientY},node,host.getBoundingClientRect(),{scale:this.scale,x:this.offset.x,y:this.offset.y});this.ensureLabel(node);this.hovered=node;this.setFocusLayers();this.renderGraph();this.animateFocus(1);try{host.setPointerCapture(pointerId)}catch{/** Window fallbacks retain ownership when capture is unavailable. */}host.focus({preventScroll:true})}
-  private releaseNode(pointerId?:number,cancelled=false):void {if(!this.dragged||pointerId!==undefined&&this.dragState?.pointerId!==pointerId)return;const node=this.dragged,moved=this.dragState?.moved===true,captured=this.dragState?.pointerId,host=this.canvasHost,additive=this.pendingFocusAdditive;this.pendingFocusAdditive=false;if(this.dragFrame){cancelAnimationFrame(this.dragFrame);this.dragFrame=0}if(endsPhysicsDrag(moved)){if(this.pendingDrag)this.worker?.postMessage({type:"dragMove",...this.pendingDrag});this.worker?.postMessage({type:"dragEnd",id:node.id})}this.pendingDrag=undefined;this.dragged=undefined;this.dragState=undefined;this.dragButtons=0;if(captured!==undefined&&host?.hasPointerCapture(captured))host.releasePointerCapture(captured);this.suppressNodeTapUntil=performance.now()+500;if(cancelled){this.clearHoverImmediate();return}this.pinFocus(node,moved?false:additive)}
+  private releaseNode(pointerId?:number,cancelled=false):void {if(!this.dragged||pointerId!==undefined&&this.dragState?.pointerId!==pointerId)return;const node=this.dragged,moved=this.dragState?.moved===true,captured=this.dragState?.pointerId,host=this.canvasHost,additive=this.pendingFocusAdditive;this.pendingFocusAdditive=false;if(this.dragFrame){cancelAnimationFrame(this.dragFrame);this.dragFrame=0}if(endsPhysicsDrag(moved)){if(this.pendingDrag)this.worker?.postMessage({type:"dragMove",version:WORKER_PROTOCOL_VERSION,...this.pendingDrag});this.worker?.postMessage({type:"dragEnd",version:WORKER_PROTOCOL_VERSION,id:node.id})}this.pendingDrag=undefined;this.dragged=undefined;this.dragState=undefined;this.dragButtons=0;if(captured!==undefined&&host?.hasPointerCapture(captured))host.releasePointerCapture(captured);this.suppressNodeTapUntil=performance.now()+500;if(cancelled){this.clearHoverImmediate();return}this.pinFocus(node,moved?false:additive)}
   private cameraViewport():CameraViewport {const width=this.contentEl.clientWidth,height=this.contentEl.clientHeight,host=this.contentEl.getBoundingClientRect(),toolbar=this.contentEl.querySelector<HTMLElement>(".beautiful-graph-toolbar")?.getBoundingClientRect(),insetBottom=toolbar?Math.max(0,height-(toolbar.top-host.top)):0;return{width,height,insetBottom}}
   private focusNode(node:GraphNode):void {const targetScale=Math.max(1,this.scale),center=viewportCenter(this.cameraViewport());this.zoomTarget={scale:targetScale,x:center.x-node.x*targetScale,y:center.y-node.y*targetScale};this.animateZoom();}
   private visibleBounds():GraphBounds|undefined {return radiusAwareBounds(this.model.nodes.filter(node=>node.visible).map(node=>({x:node.x,y:node.y,radius:node.radius*this.plugin.settings.display.nodeSize})))}
