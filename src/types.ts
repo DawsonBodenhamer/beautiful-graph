@@ -1,5 +1,6 @@
 export interface GraphForces { center: number; repel: number; link: number; distance: number }
 export interface GraphDisplay { arrows: boolean; textFade: number; nodeSize: number; linkThickness: number; glow: number; glowSize: number; recenterMultiplier:number; showSiblingLinks: boolean; showOrphans:boolean; showLinkedInSearch: boolean; lensOpacity: number; lensRadius: number; recenterOnFocus:boolean }
+export interface GraphAmbience { vignette:number; brightness:number; hue:number; saturation:number; speed:number; count:number; irregularity:number; particleSize:number; dustFade:number; dustBoost:number }
 export interface PanelPixelGeometry { x?:number; y?:number; width?:number; height?:number }
 /** Panel geometry is stored as a 0..1 fraction of the graph leaf. */
 export interface PanelState { visible:boolean; collapsed:boolean; pinned?:boolean; autoHeight?:boolean; x?:number; y?:number; width?:number; height?:number; z?:number; legacyPixels?:PanelPixelGeometry }
@@ -13,6 +14,7 @@ export interface BeautifulGraphSettings {
   maxLabelDirectories: number;
   forces: GraphForces;
   display: GraphDisplay;
+  ambience:GraphAmbience;
   categoryVisibility: Record<string, boolean>;
   groups: GraphGroup[];
   other:FallbackGroupStyle;
@@ -24,6 +26,7 @@ export interface BeautifulGraphSettings {
   panels: Record<string, PanelState>;
   forcePresets: Record<string, GraphForces>;
   displayPresets: Record<string, GraphDisplay>;
+  ambiencePresets:Record<string,GraphAmbience>;
   historyLimit: number;
   storedNodeCount:number;
 }

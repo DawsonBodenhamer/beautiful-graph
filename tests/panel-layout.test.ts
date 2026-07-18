@@ -4,6 +4,7 @@ import { resolvePanelPosition } from "../src/panel-layout.ts";
 
 test("pinned panels hug their assigned three-percent margins",()=>{
   assert.deepEqual(resolvePanelPosition("groups",true,.4,.4,1000,800,200,300),{x:30,y:24});
+  assert.deepEqual(resolvePanelPosition("ambience",true,.4,.4,1000,800,200,300),{x:770,y:24});
   assert.deepEqual(resolvePanelPosition("forces",true,.4,.4,1000,800,200,200),{x:30,y:576});
   assert.deepEqual(resolvePanelPosition("display",true,.4,.4,1000,800,200,250),{x:770,y:526});
 });

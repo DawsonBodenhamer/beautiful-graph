@@ -2,14 +2,15 @@ import { Menu, Notice, Plugin, TFolder } from "obsidian";
 import { BeautifulGraphView, BEAUTIFUL_GRAPH_VIEW } from "./graph-view";
 import { BeautifulGraphSettingTab } from "./settings";
 import type { BeautifulGraphData, BeautifulGraphSettings } from "./types";
-import { DEFAULT_DISPLAY, DEFAULT_FORCES } from "./defaults";
+import { DEFAULT_AMBIENCE, DEFAULT_DISPLAY, DEFAULT_FORCES } from "./defaults";
 import { defaultGroupIcon, GROUP_PALETTE, ROOT_INDEX_COLOR } from "./groups";
 import { migrateV2Settings } from "./settings-migration";
 import { SettingsHistory } from "./settings-history";
 import { SnapshotWriteQueue } from "./snapshot-write-queue";
 import { CURRENT_LAYOUT_REVISION, loadV2Positions, V2_DATA_VERSION } from "./layout-state";
+import { normalizeAmbience } from "./ambience";
 
-const DEFAULTS: BeautifulGraphSettings = { replaceUnderscores:true,capitalizeDirectories:true,maxLabelDirectories:3,forces:{...DEFAULT_FORCES},display:{...DEFAULT_DISPLAY},categoryVisibility:{},groups:[],other:{visible:true,color:GROUP_PALETTE[0]!,icon:"📂",colorMode:"palette"},rootIndex:{enabled:true,color:ROOT_INDEX_COLOR,icon:"🌱",includeLinked:false},otherVisible:true,groupPalette:"Beautiful Default",groupPresets:{},panels:{groups:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13},forces:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13},display:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13}},forcePresets:{},displayPresets:{},historyLimit:50,storedNodeCount:0 };
+const DEFAULTS: BeautifulGraphSettings = { replaceUnderscores:true,capitalizeDirectories:true,maxLabelDirectories:3,forces:{...DEFAULT_FORCES},display:{...DEFAULT_DISPLAY},ambience:{...DEFAULT_AMBIENCE},categoryVisibility:{},groups:[],other:{visible:true,color:GROUP_PALETTE[0]!,icon:"📂",colorMode:"palette"},rootIndex:{enabled:true,color:ROOT_INDEX_COLOR,icon:"🌱",includeLinked:false},otherVisible:true,groupPalette:"Beautiful Default",groupPresets:{},panels:{groups:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13},forces:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13},display:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13},ambience:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13}},forcePresets:{},displayPresets:{},ambiencePresets:{},historyLimit:50,storedNodeCount:0 };
 
 export default class BeautifulGraphPlugin extends Plugin {
   settings: BeautifulGraphSettings = structuredClone(DEFAULTS);
@@ -24,7 +25,8 @@ export default class BeautifulGraphPlugin extends Plugin {
   async onload():Promise<void>{
     await this.resetDiagnostics();
     const old=await this.loadData() as Partial<BeautifulGraphData>&{settings?:Partial<BeautifulGraphSettings>};
-    this.settings={...structuredClone(DEFAULTS),...old?.settings,forces:{...DEFAULTS.forces,...old?.settings?.forces},display:{...DEFAULTS.display,...old?.settings?.display},panels:{...DEFAULTS.panels,...old?.settings?.panels}};
+    this.settings={...structuredClone(DEFAULTS),...old?.settings,forces:{...DEFAULTS.forces,...old?.settings?.forces},display:{...DEFAULTS.display,...old?.settings?.display},ambience:normalizeAmbience(old?.settings?.ambience),panels:{...DEFAULTS.panels,...old?.settings?.panels}};
+    this.settings.ambiencePresets=Object.fromEntries(Object.entries(old?.settings?.ambiencePresets??{}).map(([name,preset])=>[name,normalizeAmbience(preset)]));
     const legacy=old?.settings as (Partial<BeautifulGraphSettings>&{otherVisible?:boolean;groupPalette?:string})|undefined;
     this.settings.other={...DEFAULTS.other,...legacy?.other,visible:legacy?.other?.visible??legacy?.otherVisible??true};
     this.settings.rootIndex={...DEFAULTS.rootIndex,...legacy?.rootIndex};

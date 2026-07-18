@@ -71,3 +71,21 @@
 .beautiful-palette-row,.beautiful-preset-row{gap:6px}.beautiful-group-actions{gap:6px;margin:6px 0 0}.beautiful-groups-footer .beautiful-preset-row{margin-top:6px}
 .beautiful-panel-reset,.beautiful-palette-row button,.beautiful-group-actions button{border:1px solid var(--background-modifier-border);border-radius:8px;background:var(--interactive-normal);box-shadow:var(--input-shadow);color:var(--text-normal)}
 .beautiful-palette-row button:hover,.beautiful-group-actions button:hover{border-color:#44d7b6;color:#44d7b6}
+
+/* AMBIENCE backdrop, independent dust canvases, and fourth live panel. */
+.beautiful-graph-view{background:#071018}
+.beautiful-ambience-backdrop,.beautiful-dust-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.beautiful-ambience-backdrop{z-index:0;transform:translateZ(0)}
+.beautiful-dust-background{z-index:1}
+.beautiful-graph-canvas{z-index:2}
+.beautiful-dust-foreground{z-index:3}
+.beautiful-panel-ambience{right:5%;top:5%;width:247px}
+.beautiful-ambience-global{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:0 12px 7px;border-bottom:1px solid #23313a}
+.beautiful-ambience-global button{height:22px;min-height:22px;border:1px solid var(--background-modifier-border);border-radius:8px;background:var(--interactive-normal);box-shadow:var(--input-shadow);color:var(--text-normal)}
+.beautiful-panel-ambience.is-collapsed .beautiful-ambience-global{display:none}
+.beautiful-panel-ambience.is-collapsed.is-all-collapsed .beautiful-ambience-global{display:grid;grid-template-columns:1fr;padding-top:0}
+.beautiful-panel-ambience.is-collapsed.is-all-collapsed{min-height:70px;resize:none}
+.beautiful-panel-ambience.is-all-collapsed .beautiful-gui-reset{display:none!important}
+.beautiful-panel-ambience.is-all-collapsed .beautiful-gui-collapse{grid-column:1/-1}
+.beautiful-gui-dock{display:none}
+.beautiful-graph-view.is-single-panel .beautiful-gui-dock{display:flex}
