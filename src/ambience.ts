@@ -11,16 +11,16 @@ export function normalizeAmbience(value:Partial<GraphAmbience>|undefined):GraphA
   vignette:clamp(finite(value?.vignette,DEFAULT_AMBIENCE.vignette),0,1),
   brightness:clamp(finite(value?.brightness,DEFAULT_AMBIENCE.brightness),0,2),
   hue:clamp(finite(value?.hue,DEFAULT_AMBIENCE.hue),-180,180),
-  saturation:clamp(finite(value?.saturation,DEFAULT_AMBIENCE.saturation),0,2),
+  saturation:clamp(finite(value?.saturation,DEFAULT_AMBIENCE.saturation),0,5),
   speed:clamp(finite(value?.speed,DEFAULT_AMBIENCE.speed),0,2),
-  count:Math.round(clamp(finite(value?.count,DEFAULT_AMBIENCE.count),0,400)),
-  irregularity:clamp(finite(value?.irregularity,DEFAULT_AMBIENCE.irregularity),0,1),
-  particleSize:clamp(finite(value?.particleSize,DEFAULT_AMBIENCE.particleSize),.25,3),
+  count:Math.round(clamp(finite(value?.count,DEFAULT_AMBIENCE.count),0,800)),
+  irregularity:clamp(finite(value?.irregularity,DEFAULT_AMBIENCE.irregularity),0,3),
+  particleSize:clamp(finite(value?.particleSize,DEFAULT_AMBIENCE.particleSize),.25,5),
   dustFade:clamp(finite(value?.dustFade,DEFAULT_AMBIENCE.dustFade),0,1),
   dustBoost:clamp(finite(value?.dustBoost,DEFAULT_AMBIENCE.dustBoost),0,1),
 }}
 
-export function dustLayerCounts(count:number):{background:number;foreground:number}{const total=Math.max(0,Math.min(400,Math.round(count))),background=Math.round(total*.7);return{background,foreground:total-background}}
+export function dustLayerCounts(count:number):{background:number;foreground:number}{const total=Math.max(0,Math.min(800,Math.round(count))),background=Math.round(total*.7);return{background,foreground:total-background}}
 
 function randomSequence(seed:number):()=>number{let state=seed>>>0;return()=>{state=(state+0x6d2b79f5)>>>0;let value=state;value=Math.imul(value^(value>>>15),value|1);value^=value+Math.imul(value^(value>>>7),value|61);return((value^(value>>>14))>>>0)/4294967296}}
 

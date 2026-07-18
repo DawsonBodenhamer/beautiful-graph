@@ -6,10 +6,10 @@ import { createDustParticle, dustLayerCounts, dustPosition, normalizeAmbience, t
 
 test("ambience defaults and corrupted partial values normalize additively",()=>{
   assert.deepEqual(normalizeAmbience(undefined),DEFAULT_AMBIENCE);
-  assert.deepEqual(normalizeAmbience({vignette:Number.NaN,brightness:9,hue:-999,saturation:-1,speed:Infinity,count:120.7,irregularity:2,particleSize:0,dustFade:.35,dustBoost:.65}),{...DEFAULT_AMBIENCE,brightness:2,hue:-180,saturation:0,count:121,irregularity:1,particleSize:.25,dustFade:.35,dustBoost:.65});
+  assert.deepEqual(normalizeAmbience({vignette:Number.NaN,brightness:9,hue:-999,saturation:9,speed:Infinity,count:900,irregularity:4,particleSize:8,dustFade:.35,dustBoost:.65}),{...DEFAULT_AMBIENCE,brightness:2,hue:-180,saturation:5,count:800,irregularity:3,particleSize:5,dustFade:.35,dustBoost:.65});
 });
 
-test("default count splits into 84 background and 36 foreground particles",()=>{assert.deepEqual(dustLayerCounts(120),{background:84,foreground:36});assert.deepEqual(dustLayerCounts(400),{background:280,foreground:120});assert.deepEqual(dustLayerCounts(-4),{background:0,foreground:0})});
+test("default count splits into 84 background and 36 foreground particles",()=>{assert.deepEqual(dustLayerCounts(120),{background:84,foreground:36});assert.deepEqual(dustLayerCounts(800),{background:560,foreground:240});assert.deepEqual(dustLayerCounts(-4),{background:0,foreground:0})});
 
 test("particle generation is deterministic, finite, bounded, and layer-seeded",()=>{const a=createDustParticle(17,"background"),b=createDustParticle(17,"background"),foreground=createDustParticle(17,"foreground");assert.deepEqual(a,b);assert.notDeepEqual(a,foreground);for(const value of Object.values(a))assert.equal(Number.isFinite(value),true);for(const layer of ["background","foreground"] as const)for(const time of [0,.016,3,900]){const point=dustPosition(createDustParticle(5,layer),layer,time,.6,1920,1080);assert.equal(Number.isFinite(point.x)&&Number.isFinite(point.y),true);assert.ok(point.x>-1000&&point.x<3000);assert.ok(point.y>-200&&point.y<1300)}});
 
@@ -21,4 +21,4 @@ test("Dust Boost is applied after hue, saturation, and brightness transformation
 
 test("Canvas2D lifecycle is independent, static-aware, and fully disposable",()=>{const source=readFileSync(new URL("../src/ambient-dust.ts",import.meta.url),"utf8");assert.match(source,/requestAnimationFrame\(this\.draw\)/);assert.match(source,/value\.count>0&&value\.dustFade>0&&value\.speed>0/);assert.match(source,/prefers-reduced-motion: reduce/);assert.match(source,/getClientRects\(\)\.length>0/);assert.match(source,/IntersectionObserver/);assert.match(source,/document\.visibilityState==="visible"/);assert.match(source,/cancelAnimationFrame\(this\.frame\)/);assert.match(source,/this\.background\.remove\(\);this\.foreground\.remove\(\)/);assert.doesNotMatch(source,/pixi|worker|changedFor|renderGraph/)});
 
-test("foreground uses a larger baked blur while particle size scales both layers",()=>{const source=readFileSync(new URL("../src/ambient-dust.ts",import.meta.url),"utf8");assert.match(source,/layer==="background"\?1\.25:4\.8/);assert.match(source,/particle\.size\*ambience\.particleSize/);assert.match(source,/foreground\?\.16:\.08/);assert.match(source,/foreground\?1:\.55/)});
+test("foreground particles are 20 percent larger with a reduced baked blur",()=>{const source=readFileSync(new URL("../src/ambient-dust.ts",import.meta.url),"utf8");assert.match(source,/MAX_PARTICLES=800/);assert.match(source,/layer==="background"\?1\.25:1\.5/);assert.match(source,/particle\.size\*ambience\.particleSize/);assert.match(source,/foreground\?\.16:\.08/);assert.match(source,/foreground\?\.37:\.55/)});
