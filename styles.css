@@ -76,7 +76,7 @@
 .beautiful-graph-view{background:#071018}
 .beautiful-ambience-backdrop,.beautiful-dust-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .beautiful-ambience-backdrop{z-index:0;transform:translateZ(0)}
-.beautiful-ambience-backdrop::after{content:"";position:absolute;inset:0;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.78' numOctaves='1' seed='11' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='64' height='64' filter='url(%23n)'/%3E%3C/svg%3E");background-size:64px 64px;mix-blend-mode:soft-light;opacity:.04}
+.beautiful-graph-view::before{content:"";position:absolute;z-index:1;inset:0;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.78' numOctaves='1' seed='11' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='64' height='64' filter='url(%23n)'/%3E%3C/svg%3E");background-size:64px 64px;mix-blend-mode:soft-light;opacity:.07}
 .beautiful-dust-background{z-index:1}
 .beautiful-graph-canvas{z-index:2}
 .beautiful-dust-foreground{z-index:3}
