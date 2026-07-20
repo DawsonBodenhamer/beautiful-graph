@@ -5,7 +5,7 @@ export type DustLayer="background"|"foreground";
 export interface DustParticle { phase:number; radius:number; band:number; radialPhase:number; verticalPhase:number; noisePhase:number; speedFactor:number; size:number; alpha:number }
 export interface DustCameraTransform { scale:number; x:number; y:number }
 
-export const DUST_PARALLAX_DEPTH:Record<DustLayer,number>={background:.18,foreground:.55};
+export const DUST_PARALLAX_DEPTH:Record<DustLayer,number>={background:.18,foreground:1.25};
 
 const finite=(value:unknown,fallback:number):number=>typeof value==="number"&&Number.isFinite(value)?value:fallback;
 const clamp=(value:number,min:number,max:number):number=>Math.max(min,Math.min(max,value));
@@ -23,7 +23,7 @@ export function normalizeAmbience(value:Partial<GraphAmbience>|undefined):GraphA
   dustBoost:clamp(finite(value?.dustBoost,DEFAULT_AMBIENCE.dustBoost),0,1),
 }}
 
-export function dustLayerCounts(count:number):{background:number;foreground:number}{const total=Math.max(0,Math.min(800,Math.round(count))),background=Math.round(total*.7);return{background,foreground:total-background}}
+export function dustLayerCounts(count:number):{background:number;foreground:number}{const total=Math.max(0,Math.min(800,Math.round(count))),background=Math.round(total*.85);return{background,foreground:total-background}}
 
 function randomSequence(seed:number):()=>number{let state=seed>>>0;return()=>{state=(state+0x6d2b79f5)>>>0;let value=state;value=Math.imul(value^(value>>>15),value|1);value^=value+Math.imul(value^(value>>>7),value|61);return((value^(value>>>14))>>>0)/4294967296}}
 

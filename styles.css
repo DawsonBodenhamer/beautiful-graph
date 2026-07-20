@@ -77,7 +77,7 @@
 .beautiful-ambience-backdrop,.beautiful-dust-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .beautiful-ambience-backdrop{z-index:0}
 .beautiful-dust-background{z-index:1}
-.beautiful-graph-canvas{z-index:2}
+.beautiful-graph-canvas{z-index:2}.beautiful-graph-canvas>canvas{display:block;width:100%!important;height:100%!important}
 .beautiful-dust-foreground{z-index:3}
 .beautiful-panel-ambience{right:5%;top:5%;width:247px}
 .beautiful-ambience-global{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:0 12px 7px;border-bottom:1px solid #23313a}

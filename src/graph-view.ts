@@ -193,7 +193,7 @@ export class BeautifulGraphView extends ItemView {
     const canvasHost = this.contentEl.createDiv({ cls: "beautiful-graph-canvas" });this.canvasHost=canvasHost;canvasHost.tabIndex=0;this.ambientDust=new AmbientDustController(this.contentEl,canvasHost,()=>this.plugin.settings.ambience);this.loadingEl=this.contentEl.createDiv({cls:"beautiful-graph-loading",text:"Building graph…"});
     canvasHost.addClass("is-preparing");
     this.pixi = new Application();
-    await this.pixi.init({ resizeTo: canvasHost, antialias: true, backgroundAlpha: 0, preference: "webgl",autoStart:false,sharedTicker:false });
+    await this.pixi.init({width:Math.max(1,this.contentEl.clientWidth),height:Math.max(1,this.contentEl.clientHeight),antialias:true,backgroundAlpha:0,preference:"webgl",autoStart:false,sharedTicker:false});
     this.pixi.ticker.stop();
     this.registerEvent(this.app.workspace.on("active-leaf-change",()=>{this.changed();this.ambientDust?.lifecycleChanged()}));
     this.registerEvent(this.app.workspace.on("layout-change",()=>this.ambientDust?.lifecycleChanged()));
@@ -204,7 +204,7 @@ export class BeautifulGraphView extends ItemView {
     this.registerDomEvent(window,"pointerup",event=>{if(event.button===0)this.releaseNode(event.pointerId)});
     this.registerDomEvent(window,"blur",()=>this.releaseNode(undefined,true));
     this.registerDomEvent(this.contentEl,"pointermove",event=>{if(!this.dragged&&this.isPointerOccluded(event.clientX,event.clientY)){this.cancelHoverIntent();this.clearHoverImmediate()}},true);
-    canvasHost.appendChild(this.pixi.canvas);
+    canvasHost.appendChild(this.pixi.canvas);this.syncRendererViewport();
     this.glowTexture=this.createGlowTexture();
     this.world.addChild(this.territoryLayer,this.links,this.glowLayer,this.nodeLayer,this.leaderLayer,this.labelLayer);
     this.focusWorld.addChild(this.focusLinks,this.focusGlowLayer,this.focusNodeLayer,this.focusLeaderLayer,this.focusLabelLayer);
@@ -214,7 +214,7 @@ export class BeautifulGraphView extends ItemView {
     this.plugin.registerGraph(this);
     this.updateBreadcrumb();
     this.createPanels();
-    this.lastViewport=this.cameraViewport();this.panelResizeObserver=new ResizeObserver(()=>{this.handleViewportResize();this.layoutPanels();this.ambientDust?.viewportChanged();this.changed()});this.panelResizeObserver.observe(this.contentEl);
+    this.lastViewport=this.cameraViewport();this.panelResizeObserver=new ResizeObserver(()=>{this.syncRendererViewport();this.handleViewportResize();this.layoutPanels();this.ambientDust?.viewportChanged();this.changed()});this.panelResizeObserver.observe(this.contentEl);
     this.createGuiDock();
     this.bindNavigation(canvasHost);
     this.changed();
@@ -650,6 +650,7 @@ export class BeautifulGraphView extends ItemView {
   private beginNodeDrag(node:GraphNode,pointerId:number,clientX:number,clientY:number,additive:boolean):void {const host=this.canvasHost;if(!host)return;this.cancelHoverIntent();this.pendingFocusAdditive=additive;this.dragged=node;this.dragButtons=1;this.dragState=beginDrag(pointerId,{x:clientX,y:clientY},node,host.getBoundingClientRect(),{scale:this.scale,x:this.offset.x,y:this.offset.y});this.ensureLabel(node);this.hovered=node;this.setFocusLayers();this.renderGraph();this.animateFocus(1);try{host.setPointerCapture(pointerId)}catch{/** Window fallbacks retain ownership when capture is unavailable. */}host.focus({preventScroll:true})}
   private releaseNode(pointerId?:number,cancelled=false):void {if(!this.dragged||pointerId!==undefined&&this.dragState?.pointerId!==pointerId)return;const node=this.dragged,moved=this.dragState?.moved===true,captured=this.dragState?.pointerId,host=this.canvasHost,additive=this.pendingFocusAdditive;this.pendingFocusAdditive=false;if(this.dragFrame){cancelAnimationFrame(this.dragFrame);this.dragFrame=0}if(endsPhysicsDrag(moved)){if(this.pendingDrag)this.worker?.postMessage({type:"dragMove",version:WORKER_PROTOCOL_VERSION,...this.pendingDrag});this.worker?.postMessage({type:"dragEnd",version:WORKER_PROTOCOL_VERSION,id:node.id})}this.pendingDrag=undefined;this.dragged=undefined;this.dragState=undefined;this.dragButtons=0;if(captured!==undefined&&host?.hasPointerCapture(captured))host.releasePointerCapture(captured);const now=performance.now(),click=registerNodeClick(this.nodeClickState,node.id,now,moved);this.nodeClickState=click.next;this.suppressNodeTapUntil=now+500;if(cancelled){this.nodeClickState=undefined;this.clearHoverImmediate();return}if(click.doubleClick){this.openNode(node);return}this.pinFocus(node,moved?false:additive)}
   private cameraViewport():CameraViewport {return{width:this.contentEl.clientWidth,height:this.contentEl.clientHeight}}
+  private syncRendererViewport():void {const pixi=this.pixi;if(!pixi)return;const width=Math.max(1,this.contentEl.clientWidth),height=Math.max(1,this.contentEl.clientHeight);if(pixi.screen.width!==width||pixi.screen.height!==height)pixi.renderer.resize(width,height);Object.assign(pixi.canvas.style,{display:"block",width:`${width}px`,height:`${height}px`});this.scene.filterArea=pixi.screen}
   private focusNode(node:GraphNode):void {const targetScale=Math.max(1,this.scale),center=viewportCenter(this.cameraViewport());this.zoomTarget={scale:targetScale,x:center.x-node.x*targetScale,y:center.y-node.y*targetScale};this.animateZoom();}
   private visibleBounds():GraphBounds|undefined {return radiusAwareBounds(this.model.nodes.filter(node=>node.visible).map(node=>({x:node.x,y:node.y,radius:node.radius*this.plugin.settings.display.nodeSize})))}
   private fit(animate=true):void {const bounds=this.visibleBounds();if(!bounds)return;const viewport=this.cameraViewport(),target=fitCamera(bounds,viewport,.06,this.plugin.settings.display.recenterMultiplier);if(!animate&&this.startupPhase==="building"){const usableHeight=Math.max(1,viewport.height-(viewport.insetBottom??0));this.startupMetrics.initialCameraOccupancy=Math.max((bounds.maxX-bounds.minX)*target.scale/Math.max(1,viewport.width),(bounds.maxY-bounds.minY)*target.scale/usableHeight)}if(animate){this.zoomTarget=target;this.animateZoom()}else{this.zoomTarget=undefined;this.scale=target.scale;this.offset={x:target.x,y:target.y};this.applyCameraTransform()}}
