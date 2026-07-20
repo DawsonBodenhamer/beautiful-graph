@@ -13,3 +13,12 @@ test("dense pill labels repel without abandoning their tether range",()=>{
   for(let i=0;i<labels.length;i++)for(let j=i+1;j<labels.length;j++)assert.ok(overlap(labels[i]!,labels[j]!)<.75);
   assert.ok(labels.every(label=>Math.abs(label.x-label.homeX)<=260&&Math.abs(label.y-label.homeY)<=170));
 });
+
+test("labels avoid other labeled nodes while excluding their own node",()=>{
+  const labels=[{ownerId:"a",x:100,y:100,homeX:100,homeY:100,w:80,h:24,weight:.5},{ownerId:"b",x:180,y:100,homeX:180,homeY:100,w:80,h:24,weight:.5}],obstacles=[{id:"a",x:100,y:100,radius:24},{id:"b",x:140,y:100,radius:24}];
+  const residual=relaxLabelCollisions(labels,{maxOffsetX:200,maxOffsetY:120,obstacles,attractionPasses:0});
+  assert.ok(residual<.5,`residual overlap was ${residual}`);
+  assert.ok(labels[0]!.x<76,"label a should move away from node b");
+  assert.ok(Math.abs(labels[1]!.x-180)<80,"own-node exclusion should not eject label b from its home range");
+  assert.ok(overlap(labels[0]!,labels[1]!)<.75,"label cleanup should retain label-label priority");
+});

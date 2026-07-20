@@ -34,7 +34,7 @@ export function backdropColorAt(radius:number,ambience:GraphAmbience):Rgb{
 export function quantizeBackdropColor(color:Rgb,threshold:number):Rgb{return[Math.floor(color[0]+threshold),Math.floor(color[1]+threshold),Math.floor(color[2]+threshold)]}
 
 export function renderDitheredBackdrop(context:CanvasRenderingContext2D,width:number,height:number,ambience:GraphAmbience):void{
-  const image=context.createImageData(width,height),pixels=image.data,lut=new Float32Array(COLOR_SAMPLES*3),cx=width*.55,cy=height*.45,radius=Math.max(Math.hypot(cx,cy),Math.hypot(width-cx,cy),Math.hypot(cx,height-cy),Math.hypot(width-cx,height-cy));
+  const image=context.createImageData(width,height),pixels=image.data,lut=new Float32Array(COLOR_SAMPLES*3),cx=width*.5,cy=height*.5,radius=Math.max(Math.hypot(cx,cy),Math.hypot(width-cx,cy),Math.hypot(cx,height-cy),Math.hypot(width-cx,height-cy));
   for(let index=0;index<COLOR_SAMPLES;index++){const color=backdropColorAt(index/(COLOR_SAMPLES-1),ambience),offset=index*3;lut[offset]=color[0];lut[offset+1]=color[1];lut[offset+2]=color[2]}
   for(let y=0;y<height;y++){const dy=y+.5-cy,noiseRow=(y%BLUE_NOISE_SIZE)*BLUE_NOISE_SIZE;for(let x=0;x<width;x++){const t=Math.min(1,Math.hypot(x+.5-cx,dy)/radius),colorOffset=Math.round(t*(COLOR_SAMPLES-1))*3,pixelOffset=(y*width+x)*4,threshold=((BLUE_NOISE_THRESHOLDS[noiseRow+x%BLUE_NOISE_SIZE]??0)+.5)/256;pixels[pixelOffset]=Math.floor((lut[colorOffset]??0)+threshold);pixels[pixelOffset+1]=Math.floor((lut[colorOffset+1]??0)+threshold);pixels[pixelOffset+2]=Math.floor((lut[colorOffset+2]??0)+threshold);pixels[pixelOffset+3]=255}}
   context.putImageData(image,0,0);
