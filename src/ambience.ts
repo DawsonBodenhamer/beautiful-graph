@@ -6,6 +6,7 @@ export interface DustParticle { phase:number; radius:number; band:number; radial
 export interface DustCameraTransform { scale:number; x:number; y:number }
 
 export const DUST_PARALLAX_DEPTH:Record<DustLayer,number>={background:.18,foreground:1.9};
+export const DUST_REBASE_COVERAGE=.78;
 
 const finite=(value:unknown,fallback:number):number=>typeof value==="number"&&Number.isFinite(value)?value:fallback;
 const clamp=(value:number,min:number,max:number):number=>Math.max(min,Math.min(max,value));
@@ -33,10 +34,14 @@ export function dustPosition(particle:DustParticle,layer:DustLayer,time:number,i
 
 function wrap(value:number,span:number):number{return span>0?(value%span+span)%span:value}
 
+export function dustParallaxScale(layer:DustLayer,camera:DustCameraTransform,reference:DustCameraTransform):number{return(Math.max(.0001,camera.scale)/Math.max(.0001,reference.scale))**DUST_PARALLAX_DEPTH[layer]}
+
+export function shouldRebaseDustLayer(layer:DustLayer,camera:DustCameraTransform,reference:DustCameraTransform):boolean{return camera.scale<reference.scale&&dustParallaxScale(layer,camera,reference)<DUST_REBASE_COVERAGE}
+
 export function parallaxDustPosition(position:{x:number;y:number},layer:DustLayer,camera:DustCameraTransform,reference:DustCameraTransform,width:number,height:number):{x:number;y:number}{
   const depth=DUST_PARALLAX_DEPTH[layer],ratio=Math.max(.0001,camera.scale)/Math.max(.0001,reference.scale);
   if(Math.abs(ratio-1)<1e-6)return{x:wrap(position.x+(camera.x-reference.x)*depth,width),y:wrap(position.y+(camera.y-reference.y)*depth,height)};
-  const layerRatio=ratio**depth,pivotX=(camera.x-ratio*reference.x)/(1-ratio),pivotY=(camera.y-ratio*reference.y)/(1-ratio);
+  const layerRatio=dustParallaxScale(layer,camera,reference),pivotX=(camera.x-ratio*reference.x)/(1-ratio),pivotY=(camera.y-ratio*reference.y)/(1-ratio);
   return{x:pivotX+(position.x-pivotX)*layerRatio,y:pivotY+(position.y-pivotY)*layerRatio};
 }
 
