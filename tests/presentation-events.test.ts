@@ -46,7 +46,7 @@ test("presentation systems do not write coordinates or add family and satellite 
   assert.doesNotMatch(lens,/\.x\s*=|\.y\s*=|postMessage/);assert.doesNotMatch(protocol,/family|satellite/i);
 });
 
-test("label interpolation settles and releases the render idle window",()=>{const idle=new RenderIdleWindow();let current={x:0,y:0,side:-1 as const},target={x:32,y:4,side:1 as const},moving=true,frames=0;while(moving&&frames++<600){const next=interpolateLabelOffset(current,target,40,16),settled=Math.abs(next.x-target.x)<.02&&Math.abs(next.side*40+next.y-(target.side*40+target.y))<.02;current=settled?target:next;moving=!settled;idle.changed()}assert.equal(moving,false);for(let frame=0;frame<=RENDER_IDLE_FRAME_LIMIT;frame++)assert.equal(idle.nextFrame(),true);assert.equal(idle.nextFrame(),false)});
+test("label interpolation settles and releases the render idle window",()=>{const idle=new RenderIdleWindow();let current={x:0,y:-40},target={x:32,y:4},moving=true,frames=0;while(moving&&frames++<600){const next=interpolateLabelOffset(current,target,16),settled=Math.hypot(next.x-target.x,next.y-target.y)<.02;current=settled?target:next;moving=!settled;idle.changed()}assert.equal(moving,false);for(let frame=0;frame<=RENDER_IDLE_FRAME_LIMIT;frame++)assert.equal(idle.nextFrame(),true);assert.equal(idle.nextFrame(),false)});
 
 test("lens work is dirty-event bounded and receives an explicit final sleep pass",()=>{const view=readFileSync(new URL("../src/graph-view.ts",import.meta.url),"utf8");assert.match(view,/lensGeometryDirty\)\{if\(!this\.zoomAnimating&&now-this\.lastTerritoryUpdate>80\)/);assert.match(view,/message\.type==="sleep"[\s\S]*this\.lensGeometryDirty=true;this\.presentationInvalidation\.mark\(PresentationDirty\.Lens\)/)});
 

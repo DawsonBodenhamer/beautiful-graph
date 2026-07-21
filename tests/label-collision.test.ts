@@ -22,3 +22,21 @@ test("labels avoid other labeled nodes while excluding their own node",()=>{
   assert.ok(Math.abs(labels[1]!.x-180)<80,"own-node exclusion should not eject label b from its home range");
   assert.ok(overlap(labels[0]!,labels[1]!)<.75,"label cleanup should retain label-label priority");
 });
+
+test("owner-relative obstacles ignore nodes below seventy-five percent of owner radius",()=>{
+  const label={ownerId:"owner",ownerRadius:40,x:100,y:100,homeX:100,homeY:100,w:80,h:24,weight:.45},small={id:"small",x:100,y:100,radius:29.9};
+  const residual=relaxLabelCollisions([label],{maxOffsetX:160,maxOffsetY:100,obstacles:[small],attractionPasses:0});
+  assert.equal(residual,0);assert.deepEqual({x:label.x,y:label.y},{x:100,y:100});
+});
+
+test("owner-relative obstacles repel labels from similar and larger nodes",()=>{
+  const label={ownerId:"owner",ownerRadius:40,x:100,y:100,homeX:100,homeY:100,w:80,h:24,weight:.45},similar={id:"similar",x:100,y:100,radius:30};
+  const residual=relaxLabelCollisions([label],{maxOffsetX:160,maxOffsetY:100,obstacles:[similar],attractionPasses:0});
+  assert.ok(residual<.5);assert.notDeepEqual({x:label.x,y:label.y},{x:100,y:100});
+});
+
+test("stronger home attraction keeps an unconstrained label close to its owner",()=>{
+  const label={ownerId:"owner",ownerRadius:40,x:220,y:180,homeX:100,homeY:100,w:80,h:24,weight:.45};
+  relaxLabelCollisions([label],{maxOffsetX:160,maxOffsetY:100,obstacles:[],cleanupPasses:0});
+  assert.ok(Math.hypot(label.x-label.homeX,label.y-label.homeY)<Math.hypot(120,80)*.1);
+});

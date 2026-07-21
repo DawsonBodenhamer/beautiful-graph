@@ -1,5 +1,6 @@
 export interface CollisionLabel {
   ownerId?:string;
+  ownerRadius?:number;
   x:number;
   y:number;
   homeX:number;
@@ -19,6 +20,8 @@ export interface CollisionLayoutOptions {
   gapX?:number;
   gapY?:number;
   nodeGap?:number;
+  obstacleRatio?:number;
+  attractionStrength?:number;
   obstacles?:CollisionCircle[];
 }
 
@@ -40,17 +43,17 @@ function circleOverlap(item:CollisionLabel,obstacle:CollisionCircle,nodeGap:numb
   const overlapX=halfW+obstacle.radius-Math.abs(dx),overlapY=halfH+obstacle.radius-Math.abs(dy);return overlapX<overlapY?{x:(dx>=0?-1:1)*overlapX,y:0,overlap:overlapX}:{x:0,y:(dy>=0?-1:1)*overlapY,overlap:overlapY};
 }
 
-function separateObstacles(labels:CollisionLabel[],obstacles:CollisionCircle[],nodeGap:number):void{for(const item of labels)for(const obstacle of obstacles){const push=circleOverlap(item,obstacle,nodeGap);if(push){item.x+=push.x;item.y+=push.y}}}
+function separateObstacles(labels:CollisionLabel[],obstacles:Map<CollisionLabel,CollisionCircle[]>,nodeGap:number):void{for(const item of labels)for(const obstacle of obstacles.get(item)??[]){const push=circleOverlap(item,obstacle,nodeGap);if(push){item.x+=push.x;item.y+=push.y}}}
 
-function residualOverlap(labels:CollisionLabel[],obstacles:CollisionCircle[],gapX:number,gapY:number,nodeGap:number):number{
-  let residual=0;for(let i=0;i<labels.length;i++)for(let j=i+1;j<labels.length;j++){const a=labels[i],b=labels[j];if(!a||!b)continue;const overlap=labelOverlap(a,b,gapX,gapY);if(overlap.x>0&&overlap.y>0)residual=Math.max(residual,Math.min(overlap.x,overlap.y))}for(const item of labels)for(const obstacle of obstacles)residual=Math.max(residual,circleOverlap(item,obstacle,nodeGap)?.overlap??0);return residual;
+function residualOverlap(labels:CollisionLabel[],obstacles:Map<CollisionLabel,CollisionCircle[]>,gapX:number,gapY:number,nodeGap:number):number{
+  let residual=0;for(let i=0;i<labels.length;i++)for(let j=i+1;j<labels.length;j++){const a=labels[i],b=labels[j];if(!a||!b)continue;const overlap=labelOverlap(a,b,gapX,gapY);if(overlap.x>0&&overlap.y>0)residual=Math.max(residual,Math.min(overlap.x,overlap.y))}for(const item of labels)for(const obstacle of obstacles.get(item)??[])residual=Math.max(residual,circleOverlap(item,obstacle,nodeGap)?.overlap??0);return residual;
 }
 
 export function relaxLabelCollisions<T extends CollisionLabel>(labels:T[],options:CollisionLayoutOptions):number {
-  const attractionPasses=options.attractionPasses??8,cleanupPasses=options.cleanupPasses??64,gapX=options.gapX??4,gapY=options.gapY??3,nodeGap=options.nodeGap??5,obstacles=options.obstacles??[];
+  const attractionPasses=options.attractionPasses??12,cleanupPasses=options.cleanupPasses??64,gapX=options.gapX??4,gapY=options.gapY??3,nodeGap=options.nodeGap??5,obstacleRatio=options.obstacleRatio??.75,attractionStrength=options.attractionStrength??.18,allObstacles=options.obstacles??[],obstacles=new Map<CollisionLabel,CollisionCircle[]>(labels.map(item=>[item,allObstacles.filter(obstacle=>item.ownerId!==obstacle.id&&(item.ownerRadius===undefined||obstacle.radius>=item.ownerRadius*obstacleRatio)&&Math.abs(obstacle.x-item.homeX)<=options.maxOffsetX+item.w/2+nodeGap+obstacle.radius&&Math.abs(obstacle.y-item.homeY)<=options.maxOffsetY+item.h/2+nodeGap+obstacle.radius)]));
   let residual=0;
   for(let pass=0;pass<attractionPasses+cleanupPasses;pass++){
-    if(pass<attractionPasses)for(const item of labels){item.x+=(item.homeX-item.x)*.1;item.y+=(item.homeY-item.y)*.1}
+    if(pass<attractionPasses)for(const item of labels){item.x+=(item.homeX-item.x)*attractionStrength;item.y+=(item.homeY-item.y)*attractionStrength}
     separateLabels(labels,gapX,gapY);separateObstacles(labels,obstacles,nodeGap);separateLabels(labels,gapX,gapY);
     for(const item of labels){item.x=clamp(item.x,item.homeX-options.maxOffsetX,item.homeX+options.maxOffsetX);item.y=clamp(item.y,item.homeY-options.maxOffsetY,item.homeY+options.maxOffsetY)}
     residual=residualOverlap(labels,obstacles,gapX,gapY,nodeGap);
