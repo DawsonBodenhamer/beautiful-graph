@@ -1,1 +1,1 @@
-{"id":"beautiful-graph","name":"Beautiful Graph","version":"2.0.0","minAppVersion":"1.5.0","description":"Desktop knowledge graph with Obsidian-style physics, Groups, Folder Lens, search, and live controls.","author":"Dawson Bodenhamer","isDesktopOnly":true}
+{"id":"beautiful-graph","name":"Beautiful Graph","version":"2.0.1","minAppVersion":"1.5.0","description":"A cinematic, GPU-rendered knowledge graph with groups, folder lenses, search, focus, and live controls.","author":"Dawson Bodenhamer","authorUrl":"https://github.com/DawsonBodenhamer","isDesktopOnly":true}

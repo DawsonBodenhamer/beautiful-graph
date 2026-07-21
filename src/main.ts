@@ -1,4 +1,4 @@
-import { Menu, Notice, Plugin, TFolder } from "obsidian";
+import { Menu, normalizePath, Notice, Plugin, TFolder } from "obsidian";
 import { BeautifulGraphView, BEAUTIFUL_GRAPH_VIEW } from "./graph-view";
 import { BeautifulGraphSettingTab } from "./settings";
 import type { BeautifulGraphData, BeautifulGraphSettings } from "./types";
@@ -21,7 +21,7 @@ export default class BeautifulGraphPlugin extends Plugin {
   private fileExplorerBridgeInstalled = false;
   private diagnosticWrites:Promise<void>=Promise.resolve();
   private dataWrites=new SnapshotWriteQueue<BeautifulGraphData>();
-  readonly diagnosticPath=".obsidian/plugins/beautiful-graph/diagnostics.log";
+  private get diagnosticPath():string{return normalizePath(`${this.app.vault.configDir}/plugins/${this.manifest.id}/diagnostics.log`)}
   async onload():Promise<void>{
     await this.resetDiagnostics();
     const old=await this.loadData() as Partial<BeautifulGraphData>&{settings?:Partial<BeautifulGraphSettings>};
@@ -42,7 +42,7 @@ export default class BeautifulGraphPlugin extends Plugin {
     const positions=loadV2Positions(old?.version??0,old?.layoutRevision,old?.positions);this.data={version:V2_DATA_VERSION,layoutRevision:Object.keys(positions).length?CURRENT_LAYOUT_REVISION:0,settings:this.settings,positions};
     if((old?.version??0)!==V2_DATA_VERSION||v2Migration)await this.persistData();
     this.registerView(BEAUTIFUL_GRAPH_VIEW,(leaf)=>new BeautifulGraphView(leaf,this));
-    this.addCommand({id:"open-beautiful-graph",name:"Open Beautiful Graph",callback:()=>void this.openGraph()});
+    this.addCommand({id:"open-beautiful-graph",name:"Open graph",callback:()=>void this.openGraph()});
     this.addRibbonIcon("orbit","Open Beautiful Graph",()=>void this.openGraph());
     this.addSettingTab(new BeautifulGraphSettingTab(this.app,this));
     this.registerEvent(this.app.workspace.on("active-leaf-change",leaf=>{if(leaf?.view instanceof BeautifulGraphView)this.lastGraph=leaf.view}));

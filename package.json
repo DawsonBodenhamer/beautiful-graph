@@ -1,17 +1,18 @@
 {
   "name": "beautiful-graph",
-  "version": "2.0.0",
-  "description": "Desktop knowledge graph with Obsidian-style physics and Beautiful Graph presentation.",
+  "version": "2.0.1",
+  "description": "A cinematic, GPU-rendered knowledge graph for Obsidian desktop.",
   "main": "main.js",
   "type": "module",
   "scripts": {
-    "dev": "node esbuild.config.mjs",
+    "dev": "npm run build:assets && node esbuild.config.mjs",
     "build:wasm": "node tools/build-wasm.mjs",
-    "build": "npm run build:wasm && tsc -noEmit -skipLibCheck && node esbuild.config.mjs production && node tools/verify-artifacts.mjs",
+    "build:assets": "npm run build:wasm && node tools/build-embedded-assets.mjs",
+    "build": "npm run build:assets && tsc -noEmit -skipLibCheck && node esbuild.config.mjs production && node tools/verify-artifacts.mjs",
     "verify:artifacts": "node tools/verify-artifacts.mjs",
     "verify:phase8": "node tools/verify-phase8.mjs",
     "test:rust": "cargo test --locked --workspace",
-    "pretest": "npm run build:wasm",
+    "pretest": "npm run build:assets",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "benchmark:check": "node --check tools/benchmark-harness.js"
   },

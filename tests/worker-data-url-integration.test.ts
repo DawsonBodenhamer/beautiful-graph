@@ -1,11 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {readFileSync} from "node:fs";
-import {fileURLToPath} from "node:url";
 import {createPhysicsWorker,GRAPH_WORKER_BOOTSTRAP} from "../src/physics-worker.ts";
 
-test("production worker bundle is encoded verbatim and receives installed Wasm bytes",()=>{
-  const workerPath=fileURLToPath(new URL("../graph-worker.js",import.meta.url)),wasmPath=fileURLToPath(new URL("../graph-sim.wasm",import.meta.url));
+test("embedded worker source is encoded verbatim and receives embedded Wasm bytes",()=>{
+  const assets={workerSource:"self.onmessage=()=>{};",wasmBase64:Buffer.from([0,97,115,109,1,0,0,0]).toString("base64")};
   let scriptUrl="",options:WorkerOptions|undefined,bootstrap:unknown,transfer:Transferable[]|undefined;
   class FakeWorker {
     onmessage=null;onerror=null;onmessageerror=null;
@@ -13,10 +11,10 @@ test("production worker bundle is encoded verbatim and receives installed Wasm b
     postMessage(message:unknown,value?:Transferable[]){bootstrap=message;transfer=value}
     terminate(){}addEventListener(){}removeEventListener(){}
   }
-  createPhysicsWorker(workerPath,wasmPath,FakeWorker as unknown as typeof Worker);
+  createPhysicsWorker(FakeWorker as unknown as typeof Worker,assets);
   assert.equal(options?.name,"beautiful-graph-physics");
   const prefix="data:text/javascript;base64,";assert.ok(scriptUrl.startsWith(prefix));
-  assert.equal(Buffer.from(scriptUrl.slice(prefix.length),"base64").toString("utf8"),readFileSync(workerPath,"utf8"));
+  assert.equal(Buffer.from(scriptUrl.slice(prefix.length),"base64").toString("utf8"),assets.workerSource);
   assert.equal((bootstrap as {type:string}).type,GRAPH_WORKER_BOOTSTRAP);
-  const wasm=(bootstrap as {wasm:ArrayBuffer}).wasm;assert.equal(wasm.byteLength,readFileSync(wasmPath).byteLength);assert.equal(transfer?.[0],wasm);
+  const wasm=(bootstrap as {wasm:ArrayBuffer}).wasm;assert.deepEqual([...new Uint8Array(wasm)],[0,97,115,109,1,0,0,0]);assert.equal(transfer?.[0],wasm);
 });

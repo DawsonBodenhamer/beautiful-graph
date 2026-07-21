@@ -1,141 +1,197 @@
+<div align="center">
+
 # Beautiful Graph
 
-A desktop-only, GPU-rendered knowledge graph for Obsidian with audited default-graph physics and Beautiful Graph presentation.
+### See the structure in your knowledge.
 
-Beautiful Graph provides its own on-demand PixiJS view, persistent worker layout, directory Groups, Folder Lens contours, search, semantic focus, and live controls. It is designed for large Markdown vaults where repeated filenames such as `index.md` need folder context. Version 2.0 requires Obsidian desktop.
+A cinematic graph view for Obsidian, designed around folder-driven and Karpathy-style knowledge bases.
 
-## Features
+[![Release](https://img.shields.io/github/v/release/DawsonBodenhamer/beautiful-graph?style=for-the-badge&color=8b5cf6)](https://github.com/DawsonBodenhamer/beautiful-graph/releases)
+[![Obsidian](https://img.shields.io/badge/Obsidian-desktop-7c3aed?style=for-the-badge&logo=obsidian)](https://obsidian.md/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-22c55e?style=for-the-badge)](LICENSE)
 
-- Dedicated graph tab opened from the command palette or ribbon.
-- Directory-aware labels and special presentation for Group indexes and the vault root index.
-- Obsidian-style topology-led physics with automatic cooling, wake, collision handling, and JavaScript fallback when Wasm initialization fails.
-- Optional soft startup positions for 0-15 highest-degree nodes; zero positions are stored by default.
-- Directory Groups with visibility, colors, icons, palettes, automatic analysis, presets, and File Explorer context actions.
-- Smooth translucent Folder Lens contours toggled from Group names.
-- Search with optional linked-note context.
-- Persistent single-root and multi-root focus with direct-neighbor emphasis.
-- Responsive Groups, Forces, and Display panels with pinning, collapse, reset, presets, and undo/redo.
-- Batched live updates for file, metadata, and topology changes.
+**Folder-aware indexes · Directory Groups · Curated palettes · Living ambience**
 
-## Installation
+</div>
 
-Requires Node.js and npm for local builds.
+<img src="docs/images/beautiful_graph_startup.gif" alt="Beautiful Graph forming folder families at startup" width="100%">
 
-```powershell
-npm install
-npm run build
-```
+Beautiful Graph keeps graph navigation familiar and concentrates on what the native view does not provide: folder semantics, readable `index.md` hubs, visual Groups, expressive palettes, Folder Lens contours, and a deeply adjustable atmosphere.
 
-Copy these files into `<vault>/.obsidian/plugins/beautiful-graph/`:
+## Help keep it beautiful
+
+<table>
+  <tr>
+    <td align="center">
+      <h3>Pretty graphs do not buy groceries. Yet.</h3>
+      <p>If Beautiful Graph earns a permanent tab in your vault, a star helps people find it, thoughtful feedback helps make it better, and a few dollars can help fund the next round of polish—and possibly next week's groceries.</p>
+      <p>
+        <a href="https://github.com/DawsonBodenhamer/beautiful-graph"><img src="https://img.shields.io/badge/Star_Beautiful_Graph-181717?style=for-the-badge&logo=github" alt="Star Beautiful Graph on GitHub"></a>
+        <a href="https://github.com/DawsonBodenhamer/beautiful-graph/issues/new"><img src="https://img.shields.io/badge/Share_an_idea-8b5cf6?style=for-the-badge" alt="Open a Beautiful Graph issue"></a>
+      </p>
+      <p><em>A direct support link will be added before the public release.</em></p>
+    </td>
+  </tr>
+</table>
+
+## Built for Karpathy-style knowledge bases
+
+[Andrej Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) uses an LLM-maintained Markdown wiki between raw sources and the person exploring them. `index.md` files become important navigation hubs as the wiki grows.
+
+That structure is exactly what Beautiful Graph is designed to reveal.
+
+- An `index.md` node is labeled from its directory hierarchy instead of appearing as another indistinguishable **index**.
+- Repeated indexes remain readable across nested knowledge areas.
+- Top-level directories can become color-coded Groups automatically.
+- **Beautiful Default** reserves stable semantic colors and icons for `dev`, `outputs`, `raw`, and `wiki`.
+- The vault root, Group indexes, ordinary notes, and uncategorized notes each retain a distinct visual role.
+
+The result is a graph where the shape of the wiki is visible—not merely the links between files.
+
+![A complete Karpathy-style vault in Beautiful Graph](docs/images/beautiful_graph_overview.png)
+
+<div align="center"><sub>Shown on a 2,411-note vault with folder hubs and semantic Groups.</sub></div>
+
+## What Beautiful Graph adds
+
+| Feature | What it changes |
+|---|---|
+| **Folder-aware index labels** | Turns repeated `index.md` files into recognizable directory and hierarchy labels. |
+| **Directory Groups** | Colors, icons, visibility, automatic analysis, per-row reset, and reusable presets for folder families. |
+| **Folder Lens** | Draws soft contours around the notes belonging to a selected directory. |
+| **Curated palettes** | Recolors the complete Group system without rebuilding it by hand. |
+| **Index presentation** | Gives root and Group indexes distinct scale, glow, icon, label, and linked-family treatment. |
+| **Ambience** | Adds a controllable vignette, color treatment, and two-layer depth-aware dust field. |
+| **On-canvas studio controls** | Keeps Groups, Forces, Display, and Ambience available as movable, pinnable panels with presets and undo/redo. |
+
+## See whole folders at once
+
+Select a Group name and Folder Lens traces every connected region belonging to that directory—even when the graph has arranged those notes into separate islands.
+
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="docs/images/folder_lens_outputs.png" alt="Folder Lens highlighting the Outputs group" loading="lazy"><br><sub>Outputs</sub></td>
+    <td width="50%" align="center"><img src="docs/images/folder_lens_wiki.png" alt="Folder Lens highlighting the Wiki group" loading="lazy"><br><sub>Wiki</sub></td>
+  </tr>
+</table>
+
+## Hover into a neighborhood
+
+Hover a node to bring its immediate family forward while the rest of the vault falls softly out of focus. Large index hubs and compact directory families remain readable without losing their place in the whole graph.
+
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="docs/images/beautiful_graph_focused_index.png" alt="A large index family highlighted on hover" loading="lazy"><br><sub>A large index family</sub></td>
+    <td width="50%" align="center"><img src="docs/images/node_highlight_dev.png" alt="A compact directory family highlighted on hover" loading="lazy"><br><sub>A compact directory family</sub></td>
+  </tr>
+</table>
+
+## Make the vault yours
+
+Beautiful Graph includes six coordinated palettes. Colors remain editable after applying a palette, and any Group can be reset to its assigned palette color independently.
+
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="docs/images/palette_beautiful_default.png" alt="Beautiful Default palette" loading="lazy"><br><sub>Beautiful Default</sub></td>
+    <td width="50%" align="center"><img src="docs/images/palette_tokyo_night_moon.png" alt="Tokyo Night Moon palette" loading="lazy"><br><sub>Tokyo Night Moon</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><img src="docs/images/palette_nord_aurora.png" alt="Nord Aurora palette" loading="lazy"><br><sub>Nord Aurora</sub></td>
+    <td width="50%" align="center"><img src="docs/images/palette_high_discrimination.png" alt="High Discrimination palette" loading="lazy"><br><sub>High Discrimination</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><img src="docs/images/palette_catppuccin_mocha.png" alt="Catppuccin Mocha palette" loading="lazy"><br><sub>Catppuccin Mocha</sub></td>
+    <td width="50%" align="center"><img src="docs/images/palette_gruvbox_dark.png" alt="Gruvbox Dark palette" loading="lazy"><br><sub>Gruvbox Dark</sub></td>
+  </tr>
+</table>
+
+## Tune it without leaving the graph
+
+Every Beautiful Graph-specific visual system is controlled directly on the canvas:
+
+- **Groups:** visibility, colors, icons, Folder Lens, palette selection, automatic analysis, and presets.
+- **Ambience:** vignette, brightness, hue, saturation, particle speed, count, irregularity, size, fade, and boost.
+- **Display:** label threshold, node and link scale, glow, sibling links, orphans, and focused-family centering.
+- **Forces:** a compact four-control panel for shaping the layout when you want a different visual composition.
+
+Panels can be pinned, collapsed, moved, resized, reset, and saved as presets. The bottom toolbar provides filter, undo, redo, and recenter controls without opening a settings page.
+
+![Beautiful Graph with all four live control panels open](docs/images/beautiful_graph_controls.png)
+
+## Install
+
+### Community plugins
+
+1. Open **Settings → Community plugins → Browse**.
+2. Search for **Beautiful Graph**.
+3. Select **Install**, then **Enable**.
+
+### BRAT
+
+To install a beta build before it reaches Community plugins:
+
+1. Install and enable [BRAT](https://github.com/TfTHacker/obsidian42-brat).
+2. Choose **Add Beta plugin**.
+3. Enter `DawsonBodenhamer/beautiful-graph`.
+
+### Manual installation
+
+Download `main.js`, `manifest.json`, and `styles.css` from the matching [GitHub release](https://github.com/DawsonBodenhamer/beautiful-graph/releases), then place them in:
 
 ```text
-manifest.json
-main.js
-graph-worker.js
-graph-sim.wasm
-styles.css
+<your-vault>/.obsidian/plugins/beautiful-graph/
 ```
 
-Enable **Beautiful Graph** under **Settings -> Community plugins**.
+Restart Obsidian and enable **Beautiful Graph** under **Settings → Community plugins**.
 
-Run **Beautiful Graph: Open Beautiful Graph** from the command palette. A custom hotkey such as `Ctrl+G` can be assigned in Obsidian's hotkey settings.
+> Beautiful Graph is desktop-only and requires Obsidian 1.5.0 or newer.
 
-## Controls
+## Start with your folder structure
 
-| Input | Action |
-|---|---|
-| Mouse wheel | Smooth cursor-anchored zoom. |
-| Left-drag background | Pan the graph. |
-| Left-drag node | Move the node and couple it to live physics. |
-| Click node | Pin focus to that node and its direct neighbors. |
-| Shift-click node | Add or remove a focus root. |
-| Ctrl-click node | Open the note in a new tab. |
-| Double-click node | Open the note. |
-| Space | Recenter the active graph. |
-| Type while the graph is focused | Focus the graph search field. |
-| Escape in search | Clear the search. |
-| Ctrl+Z | Undo graph settings. |
-| Ctrl+Shift+Z or Ctrl+Y | Redo graph settings. |
+1. Open the command palette and run **Beautiful Graph: Open graph**, or select the orbit icon in the ribbon.
+2. Expand **Groups** and select **Analyze & Auto Group** to discover the vault's top-level directories.
+3. Choose a palette or assign individual colors and icons.
+4. Select a Group name to toggle its Folder Lens.
+5. Adjust Ambience and Display until the graph fits the vault's visual identity.
+6. Save the result as presets if you want to experiment without losing it.
 
-The bottom toolbar also exposes Undo, Redo, and Recenter Graph. On constrained viewports, use `G`, `F`, and `D` in the GUI dock to switch between panels.
+Beautiful Graph never edits note contents. Its settings, optional cooled position seeds, and local troubleshooting log stay in the plugin's Obsidian data directory.
 
-## On-Graph Panels
+<details>
+<summary><strong>Build from source</strong></summary>
 
-### Groups
-
-- Toggle all Groups or individual directories.
-- Edit Group colors and single-grapheme icons.
-- Click a Group name to toggle its Folder Lens.
-- Cycle palettes.
-- Run **Analyze & Auto Group**.
-- Load, save, and delete Group presets.
-- Configure Everything or Everything Else and Root Index styling.
-
-Folders also receive Beautiful Graph actions in the Obsidian File Explorer context menu.
-
-### Forces
-
-- Center Force.
-- Repel Force.
-- Link Force.
-- Link Distance.
-- Reset Forces and named four-control presets.
-
-Numeric readouts support horizontal scrubbing, Shift for precision, Ctrl for coarse adjustment, double-click text entry, Escape to cancel, and the reset icon for exact zero.
-
-### Display
-
-- Text Fade.
-- Node Size.
-- Link Size.
-- Glow and Glow Size.
-- Show Sibling Links.
-- Show Orphans.
-- Center Focused Node.
-- Reset Display and named presets.
-
-## Plugin Settings
-
-- Replace underscores.
-- Capitalize directory names.
-- Stored node positions: 0-15, default 0.
-- Undo history size: 10-200.
-- Reset panel layout.
-- Clear saved layout.
-
-Most visual and physics controls live on the graph so changes can be previewed immediately.
-
-## Development
+Requires Node.js 22+, npm, Rust `1.88.0`, and the `wasm32-unknown-unknown` target.
 
 ```powershell
+npm ci
 npm test
 npm run build
-npm run benchmark:check
+cargo test --locked --workspace
 ```
 
-- `npm test` runs the TypeScript test suite with Node's test runner.
-- `npm run build` performs strict TypeScript validation and creates and verifies all five production artifacts.
-- `npm run verify:artifacts` verifies release versions and the complete production artifact set.
-- `npm run benchmark:check` validates the benchmark harness syntax.
-- `npm run dev` starts the development esbuild configuration.
+The production build creates the three files used by Obsidian Community plugins: `main.js`, `manifest.json`, and `styles.css`.
 
-Generated bundles, dependencies, diagnostics, coverage, and code-intelligence caches are intentionally untracked.
+</details>
 
-## Architecture
+## Contributing
 
-- `src/main.ts`: plugin lifecycle, settings, view registration, persistence, and File Explorer integration.
-- `src/graph-view.ts`: PixiJS scene, panels, camera, interaction, search, focus, labels, and live updates.
-- `src/graph-model.ts`: Markdown and metadata graph extraction.
-- `src/physics-worker.ts`: named desktop worker creation and installation boundary.
-- Focused helper modules contain force kernels, persistence, migration, presentation, Groups, Folder Lens, camera, label, tether, and control logic.
-- `tests/`: unit, migration, generated-worker, and regression coverage.
-- `tools/benchmark-harness.js`: reproducible interaction benchmark harness.
+Found a defect or have an idea? Open a [GitHub issue](https://github.com/DawsonBodenhamer/beautiful-graph/issues) with your Obsidian version, Beautiful Graph version, operating system, and reproduction steps.
 
-## Current Limitations
+Focused pull requests are welcome. Run the test and build commands before submitting changes. Generated runtime artifacts should not be committed.
 
-- The historical minimap requirement is not implemented in version 2.0.0.
-- File Explorer selection integration observes Obsidian DOM elements and may need adjustment after Obsidian UI changes.
-- Layout and performance depend on vault topology, metadata quality, device capability, and active settings.
-- Final visual acceptance for the latest presentation revision is performed manually after an Obsidian reload or restart.
+## Current limitations
 
-Project decisions and current verification state are documented in `../../wiki/projects/beautiful_graph/`.
+- Desktop only.
+- A minimap is not currently included.
+- File Explorer selection integration may need maintenance after major Obsidian interface changes.
+- Very large vaults remain dependent on device capability and active visual settings.
+
+---
+
+<div align="center">
+
+Built for wandering through ideas without losing the shape of them.
+
+[Releases](https://github.com/DawsonBodenhamer/beautiful-graph/releases) · [Issues](https://github.com/DawsonBodenhamer/beautiful-graph/issues) · [MIT License](LICENSE)
+
+</div>

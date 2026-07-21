@@ -7,7 +7,7 @@ const json=(path:string)=>JSON.parse(text(path));
 
 test("release metadata is consistently versioned and desktop-only",()=>{
   const manifest=json("../manifest.json"),pkg=json("../package.json"),lock=json("../package-lock.json"),versions=json("../versions.json");
-  assert.equal(manifest.version,"2.0.0");
+  assert.equal(manifest.version,"2.0.1");
   assert.equal(pkg.version,manifest.version);
   assert.equal(lock.version,manifest.version);
   assert.equal(lock.packages[""].version,manifest.version);
@@ -15,13 +15,18 @@ test("release metadata is consistently versioned and desktop-only",()=>{
   assert.equal(manifest.isDesktopOnly,true);
 });
 
-test("production build emits and verifies the complete artifact contract",()=>{
-  const pkg=json("../package.json"),build=text("../esbuild.config.mjs"),verify=text("../tools/verify-artifacts.mjs"),contract=json("../config/v2_artifacts.json");
+test("production build emits and verifies the Community three-file contract",()=>{
+  const pkg=json("../package.json"),build=text("../esbuild.config.mjs"),embedded=text("../tools/build-embedded-assets.mjs"),verify=text("../tools/verify-artifacts.mjs"),contract=json("../config/v2_artifacts.json");
   assert.match(pkg.scripts.build,/verify-artifacts\.mjs/);
-  assert.match(build,/outfile:"graph-worker\.js"/);
-  assert.deepEqual(contract.artifacts.map((artifact:{path:string})=>artifact.path),["main.js","graph-worker.js","graph-sim.wasm","manifest.json","styles.css"]);
+  assert.match(pkg.scripts["build:assets"],/build-embedded-assets\.mjs/);
+  assert.doesNotMatch(build,/outfile:"graph-worker\.js"/);
+  assert.match(embedded,/src\/graph-worker\.ts/);
+  assert.match(embedded,/EMBEDDED_WORKER_SOURCE/);
+  assert.match(embedded,/EMBEDDED_WASM_BASE64/);
+  assert.deepEqual(contract.artifacts.map((artifact:{path:string})=>artifact.path),["main.js","manifest.json","styles.css"]);
   assert.match(verify,/Required production artifact is missing or empty/);
   assert.match(verify,/Unexpected or stale bundle/);
+  assert.match(verify,/embedded runtime payload/);
 });
 
 test("Phase 8 verification fails closed on runtime evidence and installed hashes",()=>{
@@ -50,14 +55,24 @@ test("production source has no dormant V1 force or Tune paths",()=>{
   assert.doesNotMatch(sources,/new\s+Blob|createObjectURL/);
 });
 
-test("worker assets resolve from the installed plugin directory and diagnostics expose engine selection",()=>{
+test("public runtime avoids network access and hardcoded configuration directories",()=>{
+  const main=text("../src/main.ts"),wasm=text("../src/wasm-simulation-engine.ts"),readme=text("../README.md");
+  assert.doesNotMatch(`${main}\n${wasm}`,/fetch\(|requestUrl|XMLHttpRequest|WebSocket/);
+  assert.doesNotMatch(main,/\.obsidian\/plugins/);
+  assert.match(main,/vault\.configDir/);
+  assert.match(main,/name:"Open graph"/);
+  assert.match(readme,/never edits note contents/);
+  assert.match(readme,/local troubleshooting log stay in the plugin's Obsidian data directory/);
+});
+
+test("worker and Wasm are embedded while diagnostics expose engine selection",()=>{
   const view=text("../src/graph-view.ts"),worker=text("../src/graph-worker.ts"),factory=text("../src/physics-worker.ts"),build=text("../esbuild.config.mjs");
-  assert.match(view,/manifest\.dir/);
-  assert.match(view,/adapter\.getFullPath\(`\$\{directory\}\/\$\{GRAPH_WORKER_ASSET\}`\)/);
-  assert.match(view,/adapter instanceof FileSystemAdapter/);
+  assert.doesNotMatch(view,/FileSystemAdapter|GRAPH_WORKER_ASSET|GRAPH_WASM_ASSET/);
+  assert.match(factory,/EMBEDDED_WORKER_SOURCE/);
+  assert.match(factory,/EMBEDDED_WASM_BASE64/);
   assert.match(factory,/data:text\/javascript;base64/);
   assert.doesNotMatch(factory,/Blob|createObjectURL|worker_threads/);
-  assert.match(build,/platform:"browser",format:"iife"/);
+  assert.match(text("../tools/build-embedded-assets.mjs"),/platform:"browser"/);
   assert.match(view,/physics-engine-fallback/);
   assert.match(view,/physics-engine-selected/);
   assert.match(view,/physics-worker-failure/);

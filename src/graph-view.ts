@@ -1,7 +1,7 @@
-import { FileSystemAdapter, ItemView, Menu, Notice, setIcon, TFile, TFolder, WorkspaceLeaf } from "obsidian";
+import { ItemView, Menu, Notice, setIcon, TFile, TFolder, WorkspaceLeaf } from "obsidian";
 import { Application, BlurFilter, Container, Graphics, Sprite, Text, TextStyle, Texture } from "pixi.js";
 import { buildGraphModel } from "./graph-model";
-import { createPhysicsWorker, GRAPH_WASM_ASSET, GRAPH_WORKER_ASSET, type PhysicsWorker } from "./physics-worker";
+import { createPhysicsWorker, type PhysicsWorker } from "./physics-worker";
 import { AUTOMATIC_WAKE_ALPHA, STARTUP_COOLING_TICKS, TOPOLOGY_COOLING_TICKS, TOPOLOGY_WARMUP_TICKS, WORKER_PROTOCOL_VERSION, type GraphWorkerResponse, type WorkerCoordinateMessage } from "./worker-protocol";
 import {LatestCoordinateResult,readSharedCoordinates} from "./coordinate-transport";
 import type BeautifulGraphPlugin from "./main";
@@ -287,11 +287,9 @@ export class BeautifulGraphView extends ItemView {
     const active=this.model.nodes.filter(node=>node.visible),ids=activeNodeIds(this.model.nodes);if(!force&&this.worker&&sameNodeIds(ids,this.workerNodeIds))return;
     const hadWorker=!!this.worker,survivingIds=new Set([...this.workerNodeIds].filter(id=>ids.has(id))),topology=!hadWorker&&initial.startup&&this.preparedInitialTopology?this.preparedInitialTopology:prepareWorkerTopology(active,this.model.edges,survivingIds,hadWorker?{}:this.plugin.data.positions,Math.random,this.plugin.settings.display.nodeSize),{nodes,edges}=topology;this.preparedInitialTopology=undefined;this.workerNodeIds=ids;const revision=++this.workerGeneration;this.coordinateResults.clear();
     if(!this.worker){
-      const directory=this.plugin.manifest.dir;if(!directory){this.physicsFrozen=true;if(this.startupPhase==="settling")this.degradeStartup("worker-error");new Notice(`Beautiful Graph installation error: ${GRAPH_WORKER_ASSET} cannot be located.`);return}
-      const adapter=this.app.vault.adapter;if(!(adapter instanceof FileSystemAdapter)){this.physicsFrozen=true;if(this.startupPhase==="settling")this.degradeStartup("worker-error");new Notice("Beautiful Graph 2.0 requires the desktop filesystem adapter.");return}
-      let worker:PhysicsWorker;try{worker=createPhysicsWorker(adapter.getFullPath(`${directory}/${GRAPH_WORKER_ASSET}`),adapter.getFullPath(`${directory}/${GRAPH_WASM_ASSET}`))}catch(error){this.physicsFrozen=true;if(this.startupPhase==="settling")this.degradeStartup("worker-error");new Notice(`Beautiful Graph installation error: ${GRAPH_WORKER_ASSET} could not be started.`);this.plugin.logDiagnostic("worker-create-failure",{error:String(error)});return}this.worker=worker;this.startupMetrics.workerGenerations++;
+      let worker:PhysicsWorker;try{worker=createPhysicsWorker()}catch(error){this.physicsFrozen=true;if(this.startupPhase==="settling")this.degradeStartup("worker-error");new Notice("Beautiful Graph physics could not be started.");this.plugin.logDiagnostic("worker-create-failure",{error:String(error)});return}this.worker=worker;this.startupMetrics.workerGenerations++;
       worker.onmessage=event=>{const message=event.data;if(message.version!==WORKER_PROTOCOL_VERSION)return;if(message.type==="failure"){this.failPhysicsWorker(worker,message.message);return}if(message.type==="ready"){this.runtimeDiagnostics.engine=message.engine;this.plugin.logDiagnostic(message.engine==="javascript"?"physics-engine-fallback":"physics-engine-selected",{engine:message.engine,revision:message.revision});return}if(message.revision!==this.workerGeneration||this.physicsFrozen)return;this.runtimeDiagnostics={...this.runtimeDiagnostics,transport:message.transport,...message.metrics};this.acceptCoordinateResult(message)};
-      worker.onerror=event=>this.failPhysicsWorker(worker,`Physics worker failed: ${event.message||`missing ${GRAPH_WORKER_ASSET}`}`);worker.onmessageerror=()=>this.failPhysicsWorker(worker,"Physics worker returned an unreadable message.");
+      worker.onerror=event=>this.failPhysicsWorker(worker,`Physics worker failed: ${event.message||"embedded worker error"}`);worker.onmessageerror=()=>this.failPhysicsWorker(worker,"Physics worker returned an unreadable message.");
     }
     this.workerCollisionRadii=new Map(nodes.map(node=>[node.id,node.radius]));
     const message={type:hadWorker?"topology":"init",version:WORKER_PROTOCOL_VERSION,revision,nodes,edges,forces:this.plugin.settings.forces,heat:initial.heat??(initial.startup||hadWorker?1:AUTOMATIC_WAKE_ALPHA),...(initial.startup?{coolingTicks:STARTUP_COOLING_TICKS}:hadWorker?{coolingTicks:TOPOLOGY_COOLING_TICKS,warmupTicks:TOPOLOGY_WARMUP_TICKS}:{})} as const;

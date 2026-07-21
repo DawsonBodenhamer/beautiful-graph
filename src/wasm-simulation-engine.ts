@@ -4,7 +4,7 @@ import {WASM_ABI_VERSION,effectiveCollisionRadius,toSimulationForces,type Simula
 
 const NODE_WIDTH=10,LINK_WIDTH=2;
 type WasmExports={memory:WebAssembly.Memory;bg_abi_version:()=>number;bg_reserve_nodes:(count:number)=>number;bg_reserve_links:(count:number)=>number;bg_tick:(nodes:number,links:number,alpha:number,center:number,charge:number,link:number,distance:number)=>number;bg_validate_finite:(nodes:number)=>number};
-export type WasmSource=URL|ArrayBuffer|Uint8Array|WebAssembly.Module;
+export type WasmSource=ArrayBuffer|Uint8Array|WebAssembly.Module;
 
 export class WasmSimulationEngine implements SimulationEngine{
   readonly kind="wasm" as const;
@@ -35,8 +35,7 @@ export class WasmSimulationEngine implements SimulationEngine{
 }
 
 export async function createWasmSimulationEngine(source:WasmSource):Promise<WasmSimulationEngine>{
-  let input:BufferSource|WebAssembly.Module;
-  if(source instanceof URL){const response=await fetch(source);if(!response.ok)throw new Error(`Unable to load graph-sim.wasm (${response.status}).`);input=await response.arrayBuffer()}else input=source;
+  const input:BufferSource|WebAssembly.Module=source;
   const instance=input instanceof WebAssembly.Module?await WebAssembly.instantiate(input,{}):(await WebAssembly.instantiate(input,{})).instance,wasm=instance.exports as unknown as WasmExports;
   if(typeof wasm.bg_abi_version!=="function"||wasm.bg_abi_version()!==WASM_ABI_VERSION||!(wasm.memory instanceof WebAssembly.Memory))throw new Error("Unsupported graph simulation Wasm ABI.");
   return new WasmSimulationEngine(wasm);

@@ -7,7 +7,7 @@
 ## Test Deployment
 - After automated validation passes, deploy changes intended for user testing to the normal vault before requesting visual acceptance. Do not ask the user to verify source-only or build-only changes in Obsidian.
 - Normal iterative test deployment is authorized by approval of the Beautiful Graph implementation task; it does not require a separate deployment prompt unless the user explicitly says not to deploy.
-- Deploy the complete five-file artifact set together: `main.js`, `graph-worker.js`, `graph-sim.wasm`, `manifest.json`, and `styles.css`.
+- Deploy the complete Community-compatible three-file artifact set together: `main.js`, `manifest.json`, and `styles.css`. The generated worker and Wasm payloads are embedded in `main.js`; never require separate installed `graph-worker.js` or `graph-sim.wasm` files.
 - Verify every installed artifact against the development build by SHA-256 after copying. Report any mismatch as a blocker and do not request visual acceptance.
 - Tell the user to reload the Beautiful Graph plugin or restart Obsidian after deployment.
 - Test deployment does not authorize a Git commit, push, tag, release, publication, or marketplace submission; those remain separately gated.

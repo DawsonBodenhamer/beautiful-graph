@@ -38,7 +38,7 @@ test("forced Wasm and JavaScript engines satisfy shared conformance fixtures",as
 });
 
 test("Wasm initialization rejection selects the JavaScript fallback",async()=>{
-  const engine=await createPreferredSimulationEngine(new URL("data:application/wasm;base64,AA=="));
+  const engine=await createPreferredSimulationEngine(new Uint8Array([0]));
   assert.equal(engine.kind,"javascript");
 });
 

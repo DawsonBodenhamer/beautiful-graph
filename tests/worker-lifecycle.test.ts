@@ -18,9 +18,11 @@ function harness(shared=false){
 function init(worker:ReturnType<typeof harness>,revision=1){worker.runtime.onMessage({type:"init",version:WORKER_PROTOCOL_VERSION,revision,nodes,edges,forces,heat:1})}
 function initStartup(worker:ReturnType<typeof harness>,revision=1){worker.runtime.onMessage({type:"init",version:WORKER_PROTOCOL_VERSION,revision,nodes,edges,forces,heat:1,coolingTicks:STARTUP_COOLING_TICKS})}
 
-test("named worker factory encodes the installed bundle without creating a Blob worker",()=>{
+test("named worker factory encodes the embedded bundle without creating a Blob worker",()=>{
   const source=readFileSync(new URL("../src/physics-worker.ts",import.meta.url),"utf8");
-  assert.match(source,/new WorkerClass\(createWorkerDataUrl\(source\),\{name:"beautiful-graph-physics"\}\)/);
+  assert.match(source,/new WorkerClass\(createWorkerDataUrl\(assets\.workerSource\),\{name:"beautiful-graph-physics"\}\)/);
+  assert.match(source,/EMBEDDED_WORKER_SOURCE/);
+  assert.match(source,/EMBEDDED_WASM_BASE64/);
   assert.match(source,/GRAPH_WORKER_BOOTSTRAP/);
   assert.doesNotMatch(source,/Blob|createObjectURL|createPhysicsWorkerSource|worker_threads/);
 });

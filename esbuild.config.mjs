@@ -36,11 +36,10 @@ const mainContext = await esbuild.context({...shared,
   format: "cjs",
   outfile: "main.js",
 });
-const workerContext=await esbuild.context({...shared,entryPoints:["src/graph-worker.ts"],platform:"browser",format:"iife",outfile:"graph-worker.js"});
 
 if (production) {
-  await Promise.all([mainContext.rebuild(),workerContext.rebuild()]);
-  await Promise.all([mainContext.dispose(),workerContext.dispose()]);
+  await mainContext.rebuild();
+  await mainContext.dispose();
 } else {
-  await Promise.all([mainContext.watch(),workerContext.watch()]);
+  await mainContext.watch();
 }

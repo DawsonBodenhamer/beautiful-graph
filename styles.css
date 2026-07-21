@@ -72,7 +72,7 @@
 .beautiful-panel-reset,.beautiful-palette-row button,.beautiful-group-actions button{border:1px solid var(--background-modifier-border);border-radius:8px;background:var(--interactive-normal);box-shadow:var(--input-shadow);color:var(--text-normal)}
 .beautiful-palette-row button:hover,.beautiful-group-actions button:hover{border-color:#44d7b6;color:#44d7b6}
 
-/* AMBIENCE backdrop, independent dust canvases, and fourth live panel. */
+/* Ambience backdrop, independent dust canvases, and fourth live panel. */
 .beautiful-graph-view{background:#071018}
 .beautiful-ambience-backdrop,.beautiful-dust-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .beautiful-ambience-backdrop{z-index:0}
