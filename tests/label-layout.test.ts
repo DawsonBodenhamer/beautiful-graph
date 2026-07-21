@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {interpolateLabelOffset,labelAnchorOffset,labelScreenPosition} from "../src/label-layout.ts";
+import {interpolateLabelOffset,interpolateLabelReveal,labelAnchorOffset,labelScreenPosition} from "../src/label-layout.ts";
 import {tetherEndpoints} from "../src/tether-geometry.ts";
 
 const close=(actual:number,expected:number,epsilon=1e-8)=>assert.ok(Math.abs(actual-expected)<=epsilon,`${actual} != ${expected}`);
@@ -21,3 +21,5 @@ test("tether follows an arbitrary-side label and meets both opaque boundaries",(
 test("interpolation orbits continuously around the node without snapping through it",()=>{const current=labelAnchorOffset({x:0,y:-1},10,30,10,6),target=labelAnchorOffset({x:1,y:0},10,30,10,6),first=interpolateLabelOffset(current,target,16),second=interpolateLabelOffset(first,target,16),angles=[current,first,second,target].map(point=>Math.atan2(point.y,point.x));assert.ok(angles[0]!<angles[1]!&&angles[1]!<angles[2]!&&angles[2]!<angles[3]!);assert.ok(Math.hypot(first.x,first.y)>0&&Math.hypot(second.x,second.y)>0)});
 
 test("position enforces the current zoom clearance while preserving direction",()=>{const offset=labelAnchorOffset({x:1,y:0},10,30,10,6),zoomed=labelScreenPosition({x:0,y:0},40,30,10,6,offset);assert.deepEqual(zoomed,{x:82,y:0})});
+test("offset interpolation is velocity bounded",()=>{const current={x:0,y:-40},target={x:240,y:0},next=interpolateLabelOffset(current,target,16);assert.ok(Math.hypot(next.x-current.x,next.y-current.y)<=420*.016+.0001)});
+test("label reveal eases over time and converges exactly",()=>{let reveal=0,frames=0;while(reveal!==1&&frames++<300)reveal=interpolateLabelReveal(reveal,1,16);assert.equal(reveal,1);assert.ok(frames>5);const firstOut=interpolateLabelReveal(reveal,0,16);assert.ok(firstOut>0&&firstOut<1)});

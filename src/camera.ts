@@ -24,6 +24,10 @@ export function fitCamera(bounds:GraphBounds,viewport:CameraViewport,padding=.06
   return{scale,x:usable.x-(bounds.minX+bounds.maxX)/2*scale,y:usable.y-(bounds.minY+bounds.maxY)/2*scale};
 }
 
+export function fitNodeCamera(nodes:ReadonlyArray<{x:number;y:number;radius:number}>,viewport:CameraViewport,padding=.1):CameraTransform|undefined {
+  const bounds=radiusAwareBounds(nodes);return bounds?fitCamera(bounds,viewport,padding):undefined;
+}
+
 export function captureResponsiveCamera(camera:CameraTransform,viewport:CameraViewport,bounds:GraphBounds):ResponsiveCameraState {
   const fitted=fitCamera(bounds,viewport),usable=viewportCenter(viewport);
   return{centerX:(usable.x-camera.x)/camera.scale,centerY:(usable.y-camera.y)/camera.scale,zoomRatio:camera.scale/Math.max(.0001,fitted.scale)};

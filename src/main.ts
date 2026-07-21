@@ -3,14 +3,14 @@ import { BeautifulGraphView, BEAUTIFUL_GRAPH_VIEW } from "./graph-view";
 import { BeautifulGraphSettingTab } from "./settings";
 import type { BeautifulGraphData, BeautifulGraphSettings } from "./types";
 import { DEFAULT_AMBIENCE, DEFAULT_DISPLAY, DEFAULT_FORCES } from "./defaults";
-import { defaultGroupIcon, GROUP_PALETTE, ROOT_INDEX_COLOR } from "./groups";
+import { defaultGroupIcon, GROUP_PALETTE, paletteFallbackColor, ROOT_INDEX_COLOR } from "./groups";
 import { migrateV2Settings } from "./settings-migration";
 import { SettingsHistory } from "./settings-history";
 import { SnapshotWriteQueue } from "./snapshot-write-queue";
 import { CURRENT_LAYOUT_REVISION, loadV2Positions, V2_DATA_VERSION } from "./layout-state";
 import { normalizeAmbience } from "./ambience";
 
-const DEFAULTS: BeautifulGraphSettings = { replaceUnderscores:true,capitalizeDirectories:true,maxLabelDirectories:3,forces:{...DEFAULT_FORCES},display:{...DEFAULT_DISPLAY},ambience:{...DEFAULT_AMBIENCE},categoryVisibility:{},groups:[],other:{visible:true,color:GROUP_PALETTE[0]!,icon:"📂",colorMode:"palette"},rootIndex:{enabled:true,color:ROOT_INDEX_COLOR,icon:"🌱",includeLinked:false},otherVisible:true,groupPalette:"Beautiful Default",groupPresets:{},panels:{groups:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13},forces:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13},display:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13},ambience:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13}},forcePresets:{},displayPresets:{},ambiencePresets:{},historyLimit:50,storedNodeCount:0 };
+const DEFAULTS: BeautifulGraphSettings = { replaceUnderscores:true,capitalizeDirectories:true,maxLabelDirectories:3,forces:{...DEFAULT_FORCES},display:{...DEFAULT_DISPLAY},ambience:{...DEFAULT_AMBIENCE},categoryVisibility:{},groups:[],other:{visible:true,color:paletteFallbackColor([],"Beautiful Default"),icon:"📂",colorMode:"palette"},rootIndex:{enabled:true,color:ROOT_INDEX_COLOR,icon:"🌱",includeLinked:false},otherVisible:true,groupPalette:"Beautiful Default",groupPresets:{},panels:{groups:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13},forces:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13},display:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13},ambience:{visible:true,collapsed:false,pinned:true,autoHeight:true,width:.13}},forcePresets:{},displayPresets:{},ambiencePresets:{},historyLimit:50,storedNodeCount:0 };
 
 export default class BeautifulGraphPlugin extends Plugin {
   settings: BeautifulGraphSettings = structuredClone(DEFAULTS);
@@ -35,6 +35,7 @@ export default class BeautifulGraphPlugin extends Plugin {
     for(const state of Object.values(this.settings.panels))if(!state.collapsed&&state.height!==undefined&&state.height>1&&state.height<=44)delete state.height;
     if(this.settings.groupPalette==="Beautiful Balanced")this.settings.groupPalette="Beautiful Default";
     this.settings.groups=(this.settings.groups??[]).map((g,i)=>({id:g.id??`${g.origin??"manual"}:${g.root}`,root:g.root,color:g.color??GROUP_PALETTE[i%GROUP_PALETTE.length]!,icon:g.icon||defaultGroupIcon(g.root),visible:g.visible!==false,origin:g.origin??"manual",order:i}));
+    if(this.settings.other.colorMode==="palette")this.settings.other.color=paletteFallbackColor(this.settings.groups,this.settings.groupPalette);
     if((old?.version??0)<7&&this.settings.groupPalette==="Beautiful Default"){const colors:Record<string,string>={dev:"#20B2CF",outputs:"#1FDB2C",raw:"#4E606E",wiki:"#D37203"};for(const group of this.settings.groups)group.color=colors[group.root.toLowerCase()]??group.color}
     const v2Migration=migrateV2Settings(this.settings,old?.version??0,DEFAULT_FORCES);
     this.settingsHistory.setLimit(this.settings.historyLimit);
