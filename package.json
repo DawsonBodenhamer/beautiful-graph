@@ -8,13 +8,14 @@
     "dev": "npm run build:assets && node esbuild.config.mjs",
     "build:wasm": "node tools/build-wasm.mjs",
     "build:assets": "npm run build:wasm && node tools/build-embedded-assets.mjs",
-    "build": "npm run build:assets && tsc -noEmit -skipLibCheck && node esbuild.config.mjs production && node tools/verify-artifacts.mjs",
+    "build": "npm run build:assets && tsc -noEmit -skipLibCheck && npm run lint && node esbuild.config.mjs production && node tools/verify-artifacts.mjs",
     "verify:artifacts": "node tools/verify-artifacts.mjs",
     "verify:phase8": "node tools/verify-phase8.mjs",
     "test:rust": "cargo test --locked --workspace",
     "pretest": "npm run build:assets",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "benchmark:check": "node --check tools/benchmark-harness.js"
+    "benchmark:check": "node --check tools/benchmark-harness.js",
+    "lint": "eslint src"
   },
   "keywords": [
     "obsidian",
@@ -25,8 +26,11 @@
   "devDependencies": {
     "@types/node": "^22.15.17",
     "esbuild": "0.25.5",
+    "eslint": "^9.39.5",
+    "eslint-plugin-obsidianmd": "^0.4.1",
     "obsidian": "latest",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.65.0"
   },
   "dependencies": {
     "@types/d3-force": "^3.0.10",

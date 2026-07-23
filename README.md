@@ -144,7 +144,7 @@ Download `main.js`, `manifest.json`, and `styles.css` from the matching [GitHub 
 
 Restart Obsidian and enable **Beautiful Graph** under **Settings → Community plugins**.
 
-> Beautiful Graph is desktop-only and requires Obsidian 1.5.0 or newer.
+> Beautiful Graph is desktop-only and requires Obsidian 1.8.0 or newer.
 
 ## Start with your folder structure
 
@@ -155,7 +155,9 @@ Restart Obsidian and enable **Beautiful Graph** under **Settings → Community p
 5. Adjust Ambience and Display until the graph fits the vault's visual identity.
 6. Save the result as presets if you want to experiment without losing it.
 
-Beautiful Graph never edits note contents. Its settings, optional cooled position seeds, and local troubleshooting log stay in the plugin's Obsidian data directory.
+Beautiful Graph enumerates Markdown files and link metadata to construct the vault graph. Filtering can read note text and frontmatter into an in-memory search index for the current graph view. That search index is discarded when the view closes.
+
+Beautiful Graph never edits note contents or sends vault paths, metadata, or note text over the network. Its settings, optional cooled position seeds, and local troubleshooting log stay in the plugin's Obsidian data directory.
 
 <details>
 <summary><strong>Build from source</strong></summary>

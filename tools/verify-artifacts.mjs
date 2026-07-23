@@ -6,6 +6,8 @@ const readJson=path=>JSON.parse(readFileSync(resolve(root,path),"utf8"));
 const contract=readJson("config/v2_artifacts.json"),manifest=readJson("manifest.json"),pkg=readJson("package.json");
 if(contract.releaseVersion!==manifest.version||manifest.version!==pkg.version)throw new Error(`Release version mismatch: contract=${contract.releaseVersion}, manifest=${manifest.version}, package=${pkg.version}`);
 if(manifest.isDesktopOnly!==true)throw new Error("Beautiful Graph 2.0 must be desktop-only.");
+const mainSource=readFileSync(resolve(root,"main.js"),"utf8");
+if(/\beval\s*\(|\bnew\s+Function\s*\(/u.test(mainSource))throw new Error("main.js contains dynamic JavaScript execution.");
 for(const artifact of contract.artifacts){
   if(!artifact.required)continue;
   const path=resolve(root,artifact.path),stat=statSync(path,{throwIfNoEntry:false});

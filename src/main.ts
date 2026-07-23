@@ -42,15 +42,15 @@ export default class BeautifulGraphPlugin extends Plugin {
     const positions=loadV2Positions(old?.version??0,old?.layoutRevision,old?.positions);this.data={version:V2_DATA_VERSION,layoutRevision:Object.keys(positions).length?CURRENT_LAYOUT_REVISION:0,settings:this.settings,positions};
     if((old?.version??0)!==V2_DATA_VERSION||v2Migration)await this.persistData();
     this.registerView(BEAUTIFUL_GRAPH_VIEW,(leaf)=>new BeautifulGraphView(leaf,this));
-    this.addCommand({id:"open-beautiful-graph",name:"Open graph",callback:()=>void this.openGraph()});
+    this.addCommand({id:"open-graph",name:"Open graph",callback:()=>void this.openGraph()});
     this.addRibbonIcon("orbit","Open Beautiful Graph",()=>void this.openGraph());
     this.addSettingTab(new BeautifulGraphSettingTab(this.app,this));
     this.registerEvent(this.app.workspace.on("active-leaf-change",leaf=>{if(leaf?.view instanceof BeautifulGraphView)this.lastGraph=leaf.view}));
     this.registerEvent(this.app.workspace.on("file-menu",(menu,file)=>{if(file instanceof TFolder)this.addFolderMenu(menu,file)}));
     this.app.workspace.onLayoutReady(()=>this.installFileExplorerSelectionBridge());
   }
-  async onunload():Promise<void>{await this.persistData();this.app.workspace.detachLeavesOfType(BEAUTIFUL_GRAPH_VIEW)}
-  async openGraph():Promise<void>{const leaf=this.app.workspace.getLeaf("tab");await leaf.setViewState({type:BEAUTIFUL_GRAPH_VIEW,active:true});this.app.workspace.revealLeaf(leaf)}
+  onunload():void{void this.dataWrites.flush().catch(error=>console.error("Beautiful Graph final data write failed",error))}
+  async openGraph():Promise<void>{const leaf=this.app.workspace.getLeaf("tab");await leaf.setViewState({type:BEAUTIFUL_GRAPH_VIEW,active:true});await this.app.workspace.revealLeaf(leaf)}
   async persistData():Promise<void>{this.settingsHistory.commit(this.settings);this.updateHistoryButtons();this.data.settings=this.settings;await this.dataWrites.enqueue(this.data,snapshot=>this.saveData(snapshot))}
   async clearPositions():Promise<void>{this.data.positions={};this.data.layoutRevision=0;await this.persistData();new Notice("Beautiful Graph positions cleared.")}
   markLayoutCurrent():void{this.data.layoutRevision=CURRENT_LAYOUT_REVISION}
@@ -61,7 +61,7 @@ export default class BeautifulGraphPlugin extends Plugin {
   redoGraphSettings():void{const snapshot=this.settingsHistory.redo(this.settings);if(snapshot)this.applyHistorySnapshot(snapshot);else this.updateHistoryButtons()}
   private applyHistorySnapshot(snapshot:BeautifulGraphSettings):void{const previous=this.settings;this.settings=snapshot;this.data.settings=snapshot;for(const view of this.graphViews)view.applySettingsFromHistory(previous);void this.persistData();this.updateHistoryButtons()}
   private updateHistoryButtons():void{for(const view of this.graphViews)view.updateHistoryButtons(this.settingsHistory.canUndo,this.settingsHistory.canRedo)}
-  private addFolderMenu(menu:Menu,folder:TFolder):void{const group=this.settings.groups.find(g=>g.root===folder.path);menu.addItem(i=>i.setSection("beautiful-graph").setTitle(group?"Remove from graph Groups":"Add as graph Group").setIcon("folder-tree").onClick(()=>this.lastGraph?.toggleFolderGroup(folder.path)));if(group){menu.addItem(i=>i.setSection("beautiful-graph").setTitle(group.visible?"Hide Group from graph":"Show Group on graph").setIcon("eye").onClick(()=>this.lastGraph?.toggleGroupVisibility(folder.path)));menu.addItem(i=>i.setSection("beautiful-graph").setTitle("Edit graph color and icon…").setIcon("palette").onClick(()=>this.lastGraph?.editFolderGroup(folder.path)));menu.addItem(i=>i.setSection("beautiful-graph").setTitle("Reveal in Groups panel").setIcon("panel-left").onClick(()=>this.lastGraph?.revealFolderGroup(folder.path)))}}
+  private addFolderMenu(menu:Menu,folder:TFolder):void{const group=this.settings.groups.find(g=>g.root===folder.path);menu.addItem(i=>i.setSection("beautiful-graph").setTitle(group?"Remove from graph Groups":"Add as graph Group").setIcon("folder-tree").onClick(()=>this.lastGraph?.toggleFolderGroup(folder.path)));if(group){menu.addItem(i=>i.setSection("beautiful-graph").setTitle(group.visible?"Hide Group from graph":"Show Group on graph").setIcon("eye").onClick(()=>this.lastGraph?.toggleGroupVisibility(folder.path)));menu.addItem(i=>i.setSection("beautiful-graph").setTitle("Edit graph color and icon…").setIcon("palette").onClick(()=>this.lastGraph?.editFolderGroup(folder.path)));menu.addItem(i=>i.setSection("beautiful-graph").setTitle("Reveal in groups panel").setIcon("panel-left").onClick(()=>this.lastGraph?.revealFolderGroup(folder.path)))}}
   logDiagnostic(event:string,data:Record<string,unknown>={}):void{const line=JSON.stringify({time:new Date().toISOString(),event,...data})+"\n";this.diagnosticWrites=this.diagnosticWrites.then(()=>this.app.vault.adapter.append(this.diagnosticPath,line)).catch(error=>console.error("Beautiful Graph diagnostic write failed",error))}
   private async resetDiagnostics():Promise<void>{try{await this.app.vault.adapter.write(this.diagnosticPath,JSON.stringify({time:new Date().toISOString(),event:"plugin-load",version:this.manifest.version})+"\n")}catch(error){console.error("Beautiful Graph diagnostic initialization failed",error)}}
   private installFileExplorerSelectionBridge():void{

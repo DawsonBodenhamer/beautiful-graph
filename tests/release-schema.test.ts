@@ -27,6 +27,13 @@ test("production build emits and verifies the Community three-file contract",()=
   assert.match(verify,/Required production artifact is missing or empty/);
   assert.match(verify,/Unexpected or stale bundle/);
   assert.match(verify,/embedded runtime payload/);
+  assert.match(verify,/dynamic JavaScript execution/);
+});
+
+test("release stylesheet avoids forced cascade overrides and unsupported scrollbar styling",()=>{
+  const styles=text("../styles.css");
+  assert.doesNotMatch(styles,/!important/);
+  assert.doesNotMatch(styles,/scrollbar-(?:color|width)/);
 });
 
 test("Phase 8 verification fails closed on runtime evidence and installed hashes",()=>{
@@ -61,7 +68,14 @@ test("public runtime avoids network access and hardcoded configuration directori
   assert.doesNotMatch(main,/\.obsidian\/plugins/);
   assert.match(main,/vault\.configDir/);
   assert.match(main,/name:"Open graph"/);
+  assert.match(main,/id:"open-graph"/);
+  assert.doesNotMatch(main,/open-beautiful-graph/);
+  assert.match(main,/onunload\(\):void/);
+  assert.doesNotMatch(main,/detachLeavesOfType/);
   assert.match(readme,/never edits note contents/);
+  assert.match(readme,/enumerates Markdown files and link metadata/);
+  assert.match(readme,/in-memory search index/);
+  assert.match(readme,/never edits note contents or sends vault paths, metadata, or note text over the network/);
   assert.match(readme,/local troubleshooting log stay in the plugin's Obsidian data directory/);
 });
 
