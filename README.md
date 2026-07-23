@@ -6,7 +6,7 @@
 
 A cinematic graph view for Obsidian, designed around folder-driven and Karpathy-style knowledge bases.
 
-[![Release](https://img.shields.io/github/v/release/DawsonBodenhamer/beautiful-graph?style=for-the-badge&color=8b5cf6)](https://github.com/DawsonBodenhamer/beautiful-graph/releases)
+[![Release](https://img.shields.io/github/v/release/DawsonBodenhamer/beautiful-graph?style=for-the-badge&labelColor=555555&color=c37301)](https://github.com/DawsonBodenhamer/beautiful-graph/releases)
 [![Obsidian](https://img.shields.io/badge/Obsidian-desktop-7c3aed?style=for-the-badge&logo=obsidian)](https://obsidian.md/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-22c55e?style=for-the-badge)](LICENSE)
 
@@ -29,7 +29,10 @@ Beautiful Graph keeps graph navigation familiar and concentrates on what the nat
         <a href="https://github.com/DawsonBodenhamer/beautiful-graph"><img src="https://img.shields.io/badge/Star_Beautiful_Graph-181717?style=for-the-badge&logo=github" alt="Star Beautiful Graph on GitHub"></a>
         <a href="https://github.com/DawsonBodenhamer/beautiful-graph/issues/new"><img src="https://img.shields.io/badge/Share_an_idea-8b5cf6?style=for-the-badge" alt="Open a Beautiful Graph issue"></a>
       </p>
-      <p><em>A direct support link will be added before the public release.</em></p>
+      <p>
+        <a href="https://ko-fi.com/dawsonbodenhamer"><img src="https://img.shields.io/badge/Ko--Fi-9_Coffees-c37301?labelColor=555555&amp;logo=kofi&amp;logoColor=white&amp;style=for-the-badge" alt="Support Dawson Bodenhamer on Ko-fi"></a>
+        <a href="https://www.patreon.com/c/dawson_bodenhamer"><img src="https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.vercel.app%2Fapi%3Fusername%3Ddawson_bodenhamer%26type%3Dpatrons&amp;style=for-the-badge&amp;logo=patreon&amp;logoColor=white&amp;labelColor=555555&amp;color=c37301" alt="Support Dawson Bodenhamer on Patreon"></a>
+      </p>
     </td>
   </tr>
 </table>
