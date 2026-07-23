@@ -20,3 +20,10 @@ target/
 .codegraph/
 graphify-out/
 graph.json
+
+# Locally generated agent and vault-navigation instructions
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+QWEN.md
+index.md
