@@ -53,7 +53,7 @@ test("V2 parity matrix assigns every rule to one proof owner", () => {
 test("V2 artifact manifest requires the Community-compatible deployable set", () => {
   const manifest = readJson("../config/v2_artifacts.json");
   assert.equal(manifest.schema, 1);
-  assert.equal(manifest.releaseVersion, "2.0.1");
+  assert.equal(manifest.releaseVersion, "2.0.2");
   assert.deepEqual(manifest.artifacts.map((artifact: { path: string }) => artifact.path), [
     "main.js",
     "manifest.json",

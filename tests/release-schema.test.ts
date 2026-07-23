@@ -7,7 +7,7 @@ const json=(path:string)=>JSON.parse(text(path));
 
 test("release metadata is consistently versioned and desktop-only",()=>{
   const manifest=json("../manifest.json"),pkg=json("../package.json"),lock=json("../package-lock.json"),versions=json("../versions.json");
-  assert.equal(manifest.version,"2.0.1");
+  assert.equal(manifest.version,"2.0.2");
   assert.equal(pkg.version,manifest.version);
   assert.equal(lock.version,manifest.version);
   assert.equal(lock.packages[""].version,manifest.version);

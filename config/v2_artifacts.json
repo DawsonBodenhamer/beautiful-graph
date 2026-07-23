@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "releaseVersion": "2.0.1",
+  "releaseVersion": "2.0.2",
   "artifacts": [
     {
       "path": "main.js",
